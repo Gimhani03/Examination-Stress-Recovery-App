@@ -42,7 +42,6 @@ dependencies:
   url_launcher: ^6.3.1
   just_audio: ^0.9.40
   uuid: ^4.5.1
-  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -54,6 +53,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -76,7 +76,7 @@ flutter:
     - assets/Meditation.png
     - assets/CalmIcon.png
     - assets/AnxiousIcon.png
-    - assets/BreathIcon.png
+    - assets/AppLogo.png
     - assets/TiredIcon.png
     - assets/SadIcon.png
     - "assets/Splash Screen Image.png"
@@ -95,6 +95,13 @@ flutter:
     - assets/goal1.png
     - assets/goal2.png
     - assets/goal3.png
+    - assets/FocusTimer.png
+    - assets/Breathing.png
+    - assets/BreathIcon.png
+    - assets/Breathing2.png
+    - assets/Breathing3.png
+    - assets/ChatBot.png
+    - assets/Music.png
   #- images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -122,3 +129,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/AppLogo.png
+  adaptive_icon_background: "#EDE9FE"
+  adaptive_icon_foreground: assets/AppLogo.png
