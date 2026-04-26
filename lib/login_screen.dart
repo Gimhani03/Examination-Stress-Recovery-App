@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'forgot_password_screen.dart';
 import 'signup_screen.dart';
 import 'homepage.dart';
 import 'services/auth_service.dart';
@@ -178,7 +179,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                       Center(
                         child: GestureDetector(
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ForgotPasswordScreen(),
+                              ),
+                            );
+                          },
                           child: Text(
                             'Forgot password?',
                             style: TextStyle(
