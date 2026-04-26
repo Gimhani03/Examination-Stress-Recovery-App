@@ -1,17 +1,16 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'homepage.dart';
+import 'profile_avatar_presets.dart';
 import 'services/auth_service.dart';
+import 'services/emotion_board_service.dart';
 import 'services/profile_avatar_service.dart';
+import 'widgets/profile_avatar_chip.dart';
 
 const _pageBackground = Color(0xFFEDE9FE);
 const _kNeoRadius = 22.0;
 const _cardCreamA = Color(0xFFFFF7ED);
 const _cardCreamB = Color(0xFFFFFBF5);
-const _mint = Color(0xFF5EEAD4);
 const _accentPurple = Color(0xFF7C3AED);
 
 List<BoxShadow> _editProfileNeoShadows() => [
@@ -33,13 +32,12 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _authService = AuthService();
   final _avatarService = ProfileAvatarService();
-  final _picker = ImagePicker();
   final _nameController = TextEditingController();
   bool _isLoading = false;
   bool _initialized = false;
   String? _remoteAvatarUrl;
-  Uint8List? _previewBytes;
-  XFile? _pickedFile;
+  String? _remotePresetId;
+  String? _selectedPresetId;
   bool _stripAvatarOnSave = false;
 
   @override
@@ -75,6 +73,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ? rawUrl.trim()
         : null;
 
+    final rawPreset = user.userMetadata?[kAvatarPresetIdKey];
+    _remotePresetId = rawPreset is String && rawPreset.trim().isNotEmpty
+        ? rawPreset.trim()
+        : null;
+    _selectedPresetId = _remotePresetId;
+
     _initialized = true;
   }
 
@@ -87,93 +91,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String _initialsFromName() {
     final t = _nameController.text.trim();
     if (t.isEmpty) return '?';
-    return t.characters.first.toUpperCase();
+    return t[0].toUpperCase();
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      final x = await _picker.pickImage(
-        source: source,
-        maxWidth: 1536,
-        maxHeight: 1536,
-        imageQuality: 88,
-      );
-      if (x == null || !mounted) return;
-      final bytes = await x.readAsBytes();
-      if (!mounted) return;
-      setState(() {
-        _pickedFile = x;
-        _previewBytes = bytes;
-        _stripAvatarOnSave = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open image picker: $e')),
-      );
-    }
-  }
-
-  void _onRemovePhoto() {
+  void _onSelectPreset(String id) {
     setState(() {
-      _pickedFile = null;
-      _previewBytes = null;
-      _stripAvatarOnSave = true;
+      _selectedPresetId = id;
+      _stripAvatarOnSave = false;
     });
   }
 
-  void _showPhotoOptions() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: _cardCreamB,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        side: BorderSide(color: Colors.black, width: 2),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library_outlined),
-                  title: const Text(
-                    'Choose from gallery',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImage(ImageSource.gallery);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_camera_outlined),
-                  title: const Text(
-                    'Take a photo',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImage(ImageSource.camera);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  void _onRemoveAvatar() {
+    setState(() {
+      _selectedPresetId = null;
+      _stripAvatarOnSave = true;
+    });
   }
 
   Future<void> _save() async {
@@ -187,30 +119,75 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isLoading = true);
     try {
+      // Exactly one Auth `updateUser` per save for avatar+touches name, otherwise a second
+      // merge rebuilds metadata from stale in-memory maps and restores avatar_preset_id /
+      // avatar_url (emotion board stays correct until you change avatar again).
+      const avatarRemoveKeys = <String>{
+        kAvatarPresetIdKey,
+        'avatar_url',
+        'avatar_storage_path',
+      };
+
       if (_stripAvatarOnSave) {
-        await _avatarService.removeAvatar();
+        await _avatarService.deleteLegacyUploadedFileIfStored();
+        final res = await _authService.mergeUserMetadata(
+          {'full_name': name.trim()},
+          removeKeys: avatarRemoveKeys,
+        );
+        await _avatarService.syncEmotionBoardAfterAuth(
+          authResponse: res,
+          authorAvatarSnapshot: const {
+            'author_avatar_preset_id': null,
+            'author_avatar_url': null,
+          },
+        );
         if (mounted) {
           setState(() {
             _stripAvatarOnSave = false;
             _remoteAvatarUrl = null;
+            _remotePresetId = null;
+            _selectedPresetId = null;
           });
         }
-      } else if (_pickedFile != null) {
-        await _avatarService.uploadAndSaveAvatar(_pickedFile!);
+      } else if (_selectedPresetId != null) {
+        await _avatarService.deleteLegacyUploadedFileIfStored();
+        final res = await _authService.mergeUserMetadata({
+          'full_name': name.trim(),
+          kAvatarPresetIdKey: _selectedPresetId!,
+          'avatar_url': null,
+          'avatar_storage_path': null,
+        });
+        await _avatarService.syncEmotionBoardAfterAuth(
+          authResponse: res,
+          authorAvatarSnapshot: {
+            'author_avatar_preset_id': _selectedPresetId,
+            'author_avatar_url': null,
+          },
+        );
         if (mounted) {
-          final u = _authService.currentUser;
-          final raw = u?.userMetadata?['avatar_url'];
           setState(() {
-            _pickedFile = null;
-            _previewBytes = null;
-            _remoteAvatarUrl = raw is String && raw.trim().isNotEmpty
-                ? raw.trim()
-                : _remoteAvatarUrl;
+            _remotePresetId = _selectedPresetId;
+            _remoteAvatarUrl = null;
           });
+        }
+      } else {
+        await _authService.updateFullName(name.trim());
+      }
+
+      final u = _authService.currentUser;
+      if (u != null) {
+        try {
+          await EmotionBoardService().syncAuthorDisplayName(
+            user: u,
+            displayName: name.trim(),
+          );
+        } catch (e, st) {
+          debugPrint(
+            'Emotion board display_name sync failed (check UPDATE RLS): $e\n$st',
+          );
         }
       }
 
-      await _authService.updateFullName(name);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile updated')),
@@ -224,13 +201,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().contains('Bucket not found')
-                ? 'Photo upload failed. Create a public Storage bucket named "avatars" in Supabase, or check permissions.'
-                : e.toString(),
-          ),
-        ),
+        SnackBar(content: Text(e.toString())),
       );
     } finally {
       if (mounted) {
@@ -264,22 +235,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.35), width: 2),
+        borderSide:
+            BorderSide(color: Colors.black.withValues(alpha: 0.35), width: 2),
       ),
     );
   }
 
-  bool get _hasPhotoToShow {
-    if (_previewBytes != null) return true;
-    if (_stripAvatarOnSave) return false;
-    return _remoteAvatarUrl != null && _remoteAvatarUrl!.isNotEmpty;
+  bool get _canRemoveAvatar =>
+      !_stripAvatarOnSave &&
+      (_selectedPresetId != null ||
+          (_remoteAvatarUrl != null && _remoteAvatarUrl!.isNotEmpty));
+
+  /// Shown above the preset grid — legacy uploads only appear here until replaced.
+  String? get _previewNetworkUrl {
+    if (_stripAvatarOnSave) return null;
+    if (_selectedPresetId != null) return null;
+    return _remoteAvatarUrl;
   }
 
-  bool get _canRemovePhoto {
-    return _previewBytes != null ||
-        (_remoteAvatarUrl != null &&
-            _remoteAvatarUrl!.isNotEmpty &&
-            !_stripAvatarOnSave);
+  String? get _previewPresetId {
+    if (_stripAvatarOnSave) return null;
+    return _selectedPresetId;
   }
 
   @override
@@ -299,30 +275,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       appBar: AppBar(
         backgroundColor: _pageBackground,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const HomePage()),
-                  );
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const HomePage()),
+              );
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -370,7 +336,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Profile photo',
+                    'Your avatar',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
@@ -380,7 +346,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Add, replace, or remove your picture. Changes apply when you save.',
+                    'Choose an avatar below as your profile picture.',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -390,90 +356,98 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   const SizedBox(height: 16),
                   Center(
-                    child: Container(
-                      width: 104,
-                      height: 104,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _mint,
-                        border: Border.all(color: Colors.black, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            offset: const Offset(2, 2),
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: _hasPhotoToShow
-                          ? (_previewBytes != null
-                              ? Image.memory(
-                                  _previewBytes!,
-                                  fit: BoxFit.cover,
-                                  width: 104,
-                                  height: 104,
-                                )
-                              : Image.network(
-                                  _remoteAvatarUrl!,
-                                  fit: BoxFit.cover,
-                                  width: 104,
-                                  height: 104,
-                                  loadingBuilder: (_, child, progress) {
-                                    if (progress == null) return child;
-                                    return const Center(
-                                      child: SizedBox(
-                                        width: 28,
-                                        height: 28,
-                                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (_, __, ___) => Center(
-                                    child: Text(
-                                      _initialsFromName(),
-                                      style: const TextStyle(
-                                        fontSize: 36,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.black87,
-                                        height: 1,
-                                      ),
-                                    ),
-                                  ),
-                                ))
-                          : Center(
-                              child: Text(
-                                _initialsFromName(),
-                                style: const TextStyle(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.black87,
-                                  height: 1,
-                                ),
-                              ),
-                            ),
+                    child: ProfileAvatarChip(
+                      initials: _initialsFromName(),
+                      presetId: _previewPresetId,
+                      networkUrl: _previewNetworkUrl,
+                      size: 104,
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _PhotoActionButton(
-                          label: 'Change',
-                          icon: Icons.add_photo_alternate_outlined,
-                          onTap: _isLoading ? null : _showPhotoOptions,
+                  if (_remoteAvatarUrl != null &&
+                      _remoteAvatarUrl!.isNotEmpty &&
+                      _selectedPresetId == null &&
+                      !_stripAvatarOnSave)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        'Your account still shows an older photo. Choose an avatar above to switch to the new style.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black.withValues(alpha: 0.45),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _PhotoActionButton(
-                          label: 'Remove',
-                          icon: Icons.delete_outline_rounded,
-                          destructive: true,
-                          onTap: (_isLoading || !_canRemovePhoto) ? null : _onRemovePhoto,
-                        ),
-                      ),
-                    ],
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: _PhotoActionButton(
+                      label: 'Use initials instead',
+                      icon: Icons.hide_image_outlined,
+                      destructive: true,
+                      onTap: (_isLoading || !_canRemoveAvatar)
+                          ? null
+                          : _onRemoveAvatar,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Avatar options',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black87,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      const spacing = 10.0;
+                      final w = constraints.maxWidth;
+                      const cols = 4;
+                      final cell =
+                          (w - spacing * (cols - 1)) / cols;
+                      final diameter = cell.clamp(52.0, 72.0);
+                      return Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        alignment: WrapAlignment.start,
+                        children: [
+                          for (final p in ProfileAvatarPreset.library)
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap:
+                                    _isLoading ? null : () => _onSelectPreset(p.id),
+                                borderRadius: BorderRadius.circular(999),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 160),
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: !_stripAvatarOnSave &&
+                                              _selectedPresetId == p.id
+                                          ? _accentPurple
+                                          : Colors.black26,
+                                      width: !_stripAvatarOnSave &&
+                                              _selectedPresetId == p.id
+                                          ? 3
+                                          : 1,
+                                    ),
+                                  ),
+                                  child: ProfilePresetAvatarCircle(
+                                    preset: p,
+                                    size: diameter - 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
                   const Text(
@@ -530,7 +504,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(14),
@@ -570,7 +545,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 boxShadow: _editProfileNeoShadows(),
               ),
               child: Material(
-                color: _mint,
+                color: const Color(0xFF5EEAD4),
                 borderRadius: BorderRadius.circular(14),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -588,7 +563,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ? const SizedBox(
                             height: 22,
                             width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2.5),
                           )
                         : const Text(
                             'Save changes',
@@ -632,9 +608,7 @@ class _PhotoActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Ink(
           decoration: BoxDecoration(
-            color: destructive
-                ? Colors.red.shade50
-                : Colors.white,
+            color: destructive ? Colors.red.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.black, width: 2),
             boxShadow: enabled

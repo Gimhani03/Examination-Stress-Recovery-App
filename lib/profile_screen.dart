@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'recovery_tips_screen.dart';
 import 'login_screen.dart';
 import 'services/auth_service.dart';
 import 'mood_log_screen.dart';
@@ -10,10 +9,17 @@ import 'mood_summary_screen.dart';
 import 'services/mood_log_service.dart';
 import 'services/profile_stats_service.dart';
 import 'edit_profile_screen.dart';
+import 'profile_avatar_presets.dart';
+import 'widgets/profile_avatar_chip.dart';
+import 'reminders_screen.dart';
+import 'saved_motivations_screen.dart';
+import 'about_screen.dart';
+import 'help_center_screen.dart';
+import 'privacy_security_screen.dart';
+import 'sos_screen.dart';
 
 const _pageBackground = Color(0xFFEDE9FE);
 const _kNeoRadius = 22.0;
-const _tealNav = Color(0xFF115E59);
 const _cardCreamA = Color(0xFFFFF7ED);
 const _cardCreamB = Color(0xFFFFFBF5);
 const _mint = Color(0xFF5EEAD4);
@@ -30,9 +36,14 @@ List<BoxShadow> _profileNeoShadows() => [
       ),
     ];
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
   void _goTo(BuildContext context, Widget screen) {
     Navigator.pushAndRemoveUntil(
       context,
@@ -103,28 +114,18 @@ class ProfileScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: _pageBackground,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  _goTo(context, const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              _goTo(context, const HomePage());
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -151,40 +152,15 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
         centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Center(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {},
-                  borderRadius: BorderRadius.circular(12),
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black, width: 2),
-                      boxShadow: _profileNeoShadows(),
-                    ),
-                    child: const SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: Icon(Icons.settings_outlined, color: Colors.black87, size: 22),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: StreamBuilder<AuthState>(
           stream: authStream,
           builder: (context, snapshot) {
+            // Prefer refreshed in-memory user (updateUser metadata) over stream snapshot,
+            // which can lag until the next auth event.
             final user =
-                snapshot.data?.session?.user ?? authService.currentUser;
+                authService.currentUser ?? snapshot.data?.session?.user;
             final isSignedIn = user != null;
             final metaName = user?.userMetadata?['full_name'];
             final metaNameString = metaName is String
@@ -205,6 +181,10 @@ class ProfileScreen extends StatelessWidget {
             final String? avatarUrl = rawAvatar is String && rawAvatar.trim().isNotEmpty
                 ? rawAvatar.trim()
                 : null;
+            final rawPreset = user?.userMetadata?[kAvatarPresetIdKey];
+            final String? avatarPresetId = rawPreset is String && rawPreset.trim().isNotEmpty
+                ? rawPreset.trim()
+                : null;
             final statsFuture = isSignedIn
                 ? ProfileStatsService().getStats()
                 : null;
@@ -218,6 +198,7 @@ class ProfileScreen extends StatelessWidget {
                     email: email,
                     badgeText: memberSince,
                     initials: initials,
+                    avatarPresetId: avatarPresetId,
                     avatarUrl: avatarUrl,
                   )
                 else
@@ -262,6 +243,36 @@ class ProfileScreen extends StatelessWidget {
                   onCheckIn: () => _handleCheckIn(context),
                 ),
                 const SizedBox(height: 20),
+                _SectionTitle(title: 'Your collection'),
+                const SizedBox(height: 8),
+                _SettingsCard(
+                  children: [
+                    _SettingsTile(
+                      icon: Icons.bookmarks_outlined,
+                      title: 'Saved motivations',
+                      subtitle: 'From Recovery Tips — revisit anytime',
+                      onTap: isSignedIn
+                          ? () {
+                              Navigator.push<void>(
+                                context,
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const SavedMotivationsScreen(),
+                                ),
+                              );
+                            }
+                          : () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Sign in to save and view your motivations.',
+                                  ),
+                                ),
+                              );
+                            },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
                 _SectionTitle(title: 'Account'),
                 const SizedBox(height: 8),
                 _SettingsCard(
@@ -271,25 +282,51 @@ class ProfileScreen extends StatelessWidget {
                       title: 'Edit profile',
                       subtitle: 'Update your details',
                       onTap: isSignedIn
-                          ? () {
-                              Navigator.push(
+                          ? () async {
+                              final updated = await Navigator.push<bool>(
                                 context,
-                                MaterialPageRoute<void>(
+                                MaterialPageRoute<bool>(
                                   builder: (_) => const EditProfileScreen(),
                                 ),
                               );
+                              if (!mounted) return;
+                              if (updated == true) setState(() {});
                             }
                           : null,
                     ),
-                    const _SettingsTile(
+                    _SettingsTile(
                       icon: Icons.notifications_none,
-                      title: 'Notifications',
-                      subtitle: 'Reminder preferences',
+                      title: 'Notification settings',
+                      subtitle: 'Reminders, times, and calendar alerts',
+                      onTap: isSignedIn
+                          ? () {
+                              Navigator.push<void>(
+                                context,
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const RemindersScreen(),
+                                ),
+                              );
+                            }
+                          : () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Sign in to manage notification settings.'),
+                                ),
+                              );
+                            },
                     ),
-                    const _SettingsTile(
+                    _SettingsTile(
                       icon: Icons.lock_outline,
                       title: 'Privacy & security',
                       subtitle: 'Manage your data',
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PrivacySecurityScreen(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -297,16 +334,45 @@ class ProfileScreen extends StatelessWidget {
                 _SectionTitle(title: 'Support'),
                 const SizedBox(height: 8),
                 _SettingsCard(
-                  children: const [
+                  children: [
+                    _SettingsTile(
+                      icon: Icons.emergency_outlined,
+                      title: 'Crisis & helplines',
+                      subtitle: 'Emergency numbers and counselling contacts',
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SosScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     _SettingsTile(
                       icon: Icons.help_outline,
                       title: 'Help center',
                       subtitle: 'FAQs and guides',
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const HelpCenterScreen(),
+                          ),
+                        );
+                      },
                     ),
                     _SettingsTile(
                       icon: Icons.info_outline,
                       title: 'About',
                       subtitle: 'App version and info',
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AboutScreen(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -330,39 +396,8 @@ class ProfileScreen extends StatelessWidget {
           },
         ),
       ),
-      bottomNavigationBar: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined, color: _tealNav, size: 28),
-              onPressed: () => _goTo(context, const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded, color: _tealNav, size: 28),
-              onPressed: () => _goTo(context, const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded, color: _tealNav, size: 28),
-              onPressed: () => _goTo(context, const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded, color: _tealNav, size: 28),
-              onPressed: () {},
-            ),
-          ],
-        ),
+      bottomNavigationBar: const AppMainBottomNav(
+        current: AppMainNavTab.profile,
       ),
     );
   }
@@ -374,6 +409,7 @@ class _ProfileHeader extends StatelessWidget {
     required this.email,
     required this.badgeText,
     required this.initials,
+    this.avatarPresetId,
     this.avatarUrl,
   });
 
@@ -381,6 +417,7 @@ class _ProfileHeader extends StatelessWidget {
   final String email;
   final String badgeText;
   final String initials;
+  final String? avatarPresetId;
   final String? avatarUrl;
 
   @override
@@ -399,61 +436,11 @@ class _ProfileHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _mint,
-              border: Border.all(color: Colors.black, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  offset: const Offset(2, 2),
-                  blurRadius: 0,
-                ),
-              ],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: avatarUrl != null && avatarUrl!.isNotEmpty
-                ? Image.network(
-                    avatarUrl!,
-                    fit: BoxFit.cover,
-                    width: 76,
-                    height: 76,
-                    loadingBuilder: (_, child, progress) {
-                      if (progress == null) return child;
-                      return const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.5),
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => Center(
-                      child: Text(
-                        initials,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black87,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.black87,
-                        height: 1,
-                      ),
-                    ),
-                  ),
+          ProfileAvatarChip(
+            initials: initials,
+            presetId: avatarPresetId,
+            networkUrl: avatarUrl,
+            size: 76,
           ),
           const SizedBox(width: 16),
           Expanded(
