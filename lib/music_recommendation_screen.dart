@@ -3,6 +3,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'services/mood_music_service.dart';
 import 'services/music_player_service.dart';
 import 'models/music_track.dart';
+import 'mood_flow_theme.dart';
+
+/// Matches homepage “Music For You” card blues.
+const Color _kMusicBlueAccent = Color(0xFF1D4ED8);
+const Color _kMusicBlueSolid = Color(0xFF2563EB);
+const Color _kMusicBlueSoft = Color(0xFFBFDBFE);
+const Color _kMusicBlueWash = Color(0xFFDBEAFE);
 
 class MusicRecommendationScreen extends StatefulWidget {
   final String mood;
@@ -77,7 +84,7 @@ class _MusicRecommendationScreenState
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open Deezer.')),
+          const SnackBar(content: Text('Could not open Jamendo.')),
         );
       }
     } catch (e) {
@@ -92,34 +99,24 @@ class _MusicRecommendationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEDE9FE),
+      backgroundColor: kMoodFlowBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFEDE9FE),
+        backgroundColor: kMoodFlowBg,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new,
-                    color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Music For You',
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: Colors.black87,
+            letterSpacing: -0.4,
           ),
         ),
         centerTitle: true,
@@ -132,16 +129,17 @@ class _MusicRecommendationScreenState
               margin: const EdgeInsets.all(20),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color.fromARGB(255, 248, 214, 254),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Color(0xFF0288D1), width: 2),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black,
-                    offset: Offset(3, 3),
-                    blurRadius: 0,
-                  ),
-                ],
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFEFF6FF),
+                    Color(0xFFDBEAFE),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: moodFlowNeoShadows(),
               ),
               child: Row(
                 children: [
@@ -188,7 +186,7 @@ class _MusicRecommendationScreenState
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF0288D1)),
+        child: CircularProgressIndicator(color: kMoodFlowTealAccent),
       );
     }
 
@@ -202,12 +200,15 @@ class _MusicRecommendationScreenState
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8D6FE),
+                  color: _kMusicBlueSoft,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Color(0xFF0288D1), width: 2),
+                  border: Border.all(color: _kMusicBlueSolid, width: 2),
                 ),
-                child: const Icon(Icons.music_off,
-                    size: 50, color: Color(0xFF0288D1)),
+                child: const Icon(
+                  Icons.music_off,
+                  size: 50,
+                  color: _kMusicBlueAccent,
+                ),
               ),
               const SizedBox(height: 20),
               const Text(
@@ -226,16 +227,23 @@ class _MusicRecommendationScreenState
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: _loadRecommendations,
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh, color: Colors.black87),
                 label: const Text('Try Again'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF29B6F6),
-                  foregroundColor: Colors.black,
+                  backgroundColor: _kMusicBlueSoft,
+                  foregroundColor: _kMusicBlueAccent,
+                  elevation: 0,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 24, vertical: 12),
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Colors.black),
+                    borderRadius: BorderRadius.circular(14),
+                    side: const BorderSide(color: Colors.black, width: 2),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
                   ),
                 ),
               ),
@@ -267,19 +275,10 @@ class _MusicRecommendationScreenState
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isCurrentTrack
-            ? const Color(0xFFE3F6FD)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isCurrentTrack
-              ? const Color(0xFF0288D1)
-              : Colors.grey.shade300,
-          width: isCurrentTrack ? 2 : 1,
-        ),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, offset: Offset(2, 2), blurRadius: 4),
-        ],
+        color: isCurrentTrack ? _kMusicBlueWash : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black, width: 2),
+        boxShadow: moodFlowNeoShadows(),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
@@ -289,9 +288,7 @@ class _MusicRecommendationScreenState
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: isCurrentTrack
-                ? const Color(0xFF0277BD)
-                : Colors.black87,
+            color: isCurrentTrack ? _kMusicBlueAccent : Colors.black87,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -311,14 +308,14 @@ class _MusicRecommendationScreenState
                 child: Row(
                   children: [
                     const Icon(Icons.graphic_eq,
-                        size: 14, color: Color(0xFF0288D1)),
+                        size: 14, color: _kMusicBlueAccent),
                     const SizedBox(width: 4),
                     Text(
                       'Now playing...',
                       style: TextStyle(
                         fontSize: 12,
-                        color: const Color(0xFF0288D1),
-                        fontWeight: FontWeight.w500,
+                        color: _kMusicBlueAccent,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -330,46 +327,60 @@ class _MusicRecommendationScreenState
           mainAxisSize: MainAxisSize.min,
           children: [
             // Play / Pause
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF0288D1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.black, width: 1),
-              ),
-              child: _player.isLoading && isCurrentTrack
-                  ? const SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
+            Material(
+              color: _kMusicBlueSoft,
+              borderRadius: BorderRadius.circular(12),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: _player.isLoading && isCurrentTrack
+                    ? null
+                    : () => _player.togglePlayPause(index),
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.black, width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: _player.isLoading && isCurrentTrack
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.black),
+                            strokeWidth: 2,
+                            color: Colors.black87,
+                          ),
+                        )
+                      : Icon(
+                          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          color: Colors.black87,
+                          size: 28,
                         ),
-                      ),
-                    )
-                  : IconButton(
-                      icon: Icon(
-                        isPlaying ? Icons.pause : Icons.play_arrow,
-                        color: Colors.black,
-                      ),
-                      onPressed: () => _player.togglePlayPause(index),
-                    ),
+                ),
+              ),
             ),
             const SizedBox(width: 8),
-            // Open in Deezer
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: const Color(0xFF0288D1), width: 1),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.open_in_new,
-                    color: Color(0xFF0288D1), size: 20),
-                onPressed: () => _openTrack(track.deezerUrl),
+            Material(
+              color: _kMusicBlueSoft,
+              borderRadius: BorderRadius.circular(12),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _openTrack(track.externalUrl),
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.black, width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.open_in_new_rounded,
+                    color: _kMusicBlueAccent,
+                    size: 22,
+                  ),
+                ),
               ),
             ),
           ],
@@ -398,10 +409,15 @@ class _MusicRecommendationScreenState
       width: 60,
       height: 60,
       decoration: BoxDecoration(
-        color: const Color(0xFF29B6F6).withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(8),
+        color: _kMusicBlueWash,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
       ),
-      child: const Icon(Icons.music_note, color: Color(0xFF0288D1), size: 30),
+      child: const Icon(
+        Icons.music_note_rounded,
+        color: _kMusicBlueAccent,
+        size: 30,
+      ),
     );
   }
 }
