@@ -4,7 +4,8 @@ class MusicTrack {
   final String artist;
   final String? albumArt;
   final String? previewUrl;
-  final String deezerUrl;
+  /// Web URL to open the track on the provider (e.g. Jamendo).
+  final String externalUrl;
 
   const MusicTrack({
     required this.id,
@@ -12,20 +13,19 @@ class MusicTrack {
     required this.artist,
     this.albumArt,
     this.previewUrl,
-    required this.deezerUrl,
+    required this.externalUrl,
   });
 
-  factory MusicTrack.fromJson(Map<String, dynamic> json) {
+  /// One Jamendo API `results[]` item (`id`, `name`, `artist_name`, …).
+  factory MusicTrack.fromJamendoMap(Map<String, dynamic> m) {
+    final id = m['id'].toString();
     return MusicTrack(
-      id: json['id'].toString(),
-      title: json['title'] as String? ?? 'Unknown Title',
-      artist: (json['artist'] as Map<String, dynamic>?)?['name'] as String? ??
-          'Unknown Artist',
-      albumArt:
-          (json['album'] as Map<String, dynamic>?)?['cover_medium'] as String?,
-      previewUrl: json['preview'] as String?,
-      deezerUrl: json['link'] as String? ??
-          'https://www.deezer.com/track/${json['id']}',
+      id: id,
+      title: m['name'] as String? ?? 'Unknown Title',
+      artist: m['artist_name'] as String? ?? 'Unknown Artist',
+      albumArt: m['album_image'] as String?,
+      previewUrl: m['audio'] as String?,
+      externalUrl: m['shareurl'] as String? ?? 'https://www.jamendo.com/track/$id',
     );
   }
 }
