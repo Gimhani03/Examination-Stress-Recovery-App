@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'profile_screen.dart';
-import 'recovery_tips_screen.dart';
 import 'services/gemini_challenges_service.dart';
 import 'services/mood_log_service.dart';
 
@@ -11,7 +9,6 @@ const _pageBackground = Color(0xFFEDE9FE);
 const _kNeoRadius = 22.0;
 
 const _accentCoral = Color(0xFFEA580C);
-const _accentPurple = Color(0xFF7C3AED);
 const _cardGradientStart = Color(0xFFFFF7ED);
 const _cardGradientEnd = Color(0xFFFFFBF5);
 const _cardDoneGradientStart = Color(0xFFFFEDD5);
@@ -163,28 +160,18 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
       appBar: AppBar(
         backgroundColor: _pageBackground,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  _goTo(context, const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              _goTo(context, const HomePage());
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -260,44 +247,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                 ),
               ),
       ),
-      bottomNavigationBar: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const ProfileScreen()),
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: const AppMainBottomNav(),
     );
   }
 }
@@ -343,7 +293,7 @@ class _ChallengesHeroBanner extends StatelessWidget {
               color: _emojiWell,
               shape: BoxShape.circle,
               border: Border.all(
-                color: _accentCoral.withValues(alpha: 0.35),
+                color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.35),
                 width: 2,
               ),
               boxShadow: [
@@ -512,7 +462,7 @@ class _ProgressSection extends StatelessWidget {
                             colors: [
                               _accentCoral,
                               _accentCoral.withValues(alpha: 0.85),
-                              _accentPurple.withValues(alpha: 0.9),
+                              _accentCoral.withValues(alpha: 1.00),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(9),
@@ -573,7 +523,7 @@ class _ChallengeCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(_kNeoRadius),
         onTap: onToggle,
         splashColor: _accentCoral.withValues(alpha: 0.12),
-        highlightColor: _accentPurple.withValues(alpha: 0.06),
+        highlightColor: _accentCoral.withValues(alpha: 0.12),
         child: Ink(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -599,26 +549,11 @@ class _ChallengeCard extends StatelessWidget {
                     clipBehavior: Clip.none,
                     children: [
                       Positioned(
-                        left: 4,
+                        left: 18,
                         top: 4,
-                        child: Container(
+                        child: SizedBox(
                           width: 50,
                           height: 50,
-                          decoration: BoxDecoration(
-                            color: _emojiWell,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _accentCoral.withValues(alpha: 0.35),
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                offset: const Offset(2, 2),
-                                blurRadius: 0,
-                              ),
-                            ],
-                          ),
                           child: Center(
                             child: Text(
                               item.emoji,
@@ -663,7 +598,7 @@ class _ChallengeCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -699,9 +634,7 @@ class _ChallengeCard extends StatelessWidget {
                               : Colors.black.withValues(alpha: 0.9),
                           height: 1.28,
                           letterSpacing: -0.2,
-                          decoration: item.isDone
-                              ? TextDecoration.lineThrough
-                              : TextDecoration.none,
+                          
                         ),
                       ),
                     ],

@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'challenge_mood_key.dart';
+
 class PersonalizedChallenge {
   final String title;
   final String icon; // emoji or icon name
@@ -41,7 +43,14 @@ class GeminiChallengesService {
     'gemini-2.0-flash'
   ];
 
+  static final Map<String, Future<List<PersonalizedChallenge>>> _challengesInflight = {};
+
   final SupabaseClient _supabase = Supabase.instance.client;
+
+  String _challengesInflightKey(String userId, String moodKey, String sleepHours, List<String> goals) {
+    final g = List<String>.from(goals)..sort();
+    return '$userId|$moodKey|$sleepHours|${g.join('\u0001')}';
+  }
 
   Future<List<PersonalizedChallenge>> getChallenges({
     required String mood,
@@ -54,6 +63,7 @@ class GeminiChallengesService {
     }
 
     final userId = user.id;
+    final moodKey = normalizeChallengeMoodKey(mood);
     final prefs = await SharedPreferences.getInstance();
     final history = _loadHistory(prefs, userId);
     final today = _todayKey();
@@ -61,7 +71,7 @@ class GeminiChallengesService {
     // Check if we already generated challenges for today with same inputs
     if (history.isNotEmpty &&
         history.first['date'] == today &&
-        history.first['mood'] == mood &&
+        normalizeChallengeMoodKey(history.first['mood'] as String? ?? '') == moodKey &&
         history.first['sleepHours'] == sleepHours &&
         _goalsMatch(history.first['goals'] as List<dynamic>?, goals)) {
       return (history.first['challenges'] as List<dynamic>)
@@ -69,6 +79,31 @@ class GeminiChallengesService {
           .toList();
     }
 
+    final inflightKey = _challengesInflightKey(userId, moodKey, sleepHours, goals);
+    return _challengesInflight.putIfAbsent(inflightKey, () {
+      final future = _generateAndPersistChallenges(
+        userId: userId,
+        moodKey: moodKey,
+        sleepHours: sleepHours,
+        goals: goals,
+        prefs: prefs,
+        history: history,
+        today: today,
+      );
+      future.whenComplete(() => _challengesInflight.remove(inflightKey));
+      return future;
+    });
+  }
+
+  Future<List<PersonalizedChallenge>> _generateAndPersistChallenges({
+    required String userId,
+    required String moodKey,
+    required String sleepHours,
+    required List<String> goals,
+    required SharedPreferences prefs,
+    required List<Map<String, dynamic>> history,
+    required String today,
+  }) async {
     // Fetch user's recent completed challenges to avoid repetition
     final recentChallenges = await _fetchRecentChallenges(userId);
 
@@ -87,7 +122,7 @@ class GeminiChallengesService {
           challenges = await _generateChallenges(
             apiKey: apiKey,
             model: model,
-            mood: mood,
+            mood: moodKey,
             sleepHours: sleepHours,
             goals: goals,
             recentChallenges: recentChallenges,
@@ -141,7 +176,7 @@ class GeminiChallengesService {
     // Save to cache
     final entry = {
       'date': today,
-      'mood': mood,
+      'mood': moodKey,
       'sleepHours': sleepHours,
       'goals': goals,
       'challenges': resolvedChallenges.map((c) => c.toMap()).toList(),
