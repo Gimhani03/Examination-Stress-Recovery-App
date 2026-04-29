@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/signup_screen.dart';
+import 'package:flutter_application_1/onboarding_screen_3.dart';
 
 class OnboardingScreen2 extends StatelessWidget {
   const OnboardingScreen2({super.key});
@@ -7,7 +7,7 @@ class OnboardingScreen2 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF90CAF9),
+      backgroundColor: const Color(0xFF76E1D4),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -18,7 +18,7 @@ class OnboardingScreen2 extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                    MaterialPageRoute(builder: (_) => const OnboardingScreen3()),
                   ),
                   child: const Padding(
                     padding: EdgeInsets.all(4),
@@ -102,7 +102,7 @@ class OnboardingScreen2 extends StatelessWidget {
                         title: 'Daily Personalized Challenges',
                         subtitle: 'Adopts healthy habits and stay\nbalanced',
                         onNext: () => Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                          MaterialPageRoute(builder: (_) => const OnboardingScreen3()),
                         ),
                       ),
                     ),
@@ -117,6 +117,8 @@ class OnboardingScreen2 extends StatelessWidget {
                     Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFF0A1E3A).withValues(alpha: 0.3), borderRadius: BorderRadius.circular(4))),
                     const SizedBox(width: 6),
                     Container(width: 20, height: 8, decoration: BoxDecoration(color: const Color(0xFF0A1E3A), borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(width: 6),
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFF0A1E3A).withValues(alpha: 0.3), borderRadius: BorderRadius.circular(4))),
                   ],
                 ),
               ),
@@ -148,7 +150,7 @@ class _OnboardingCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1565C0).withValues(alpha: 0.12),
+            color: const Color(0xFF0F766E).withValues(alpha: 0.14),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -215,7 +217,7 @@ class _OnboardingWideCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1565C0).withValues(alpha: 0.12),
+            color: const Color(0xFF0F766E).withValues(alpha: 0.14),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
