@@ -38,6 +38,27 @@ class MoodLogService {
     return getMoodLogForDate(DateTime.now());
   }
 
+  /// Most recent mood log (any day), for reminder copy tied to the latest check-in.
+  Future<Map<String, dynamic>?> getLatestMoodLog() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('User not signed in');
+    }
+
+    final response = await _supabase
+        .from('mood_logs')
+        .select()
+        .eq('user_id', user.id)
+        .order('log_date', ascending: false)
+        .limit(1);
+
+    if (response.isEmpty) {
+      return null;
+    }
+
+    return _normalizeMoodLog(response.first);
+  }
+
   Future<Map<String, dynamic>?> getMoodLogForDate(DateTime date) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {

@@ -28,3 +28,26 @@ void moodFlowGoTo(BuildContext context, Widget screen) {
     (route) => false,
   );
 }
+
+/// Same format as emotion-board post cards (local date · 12h time).
+String formatEmotionPostTimestamp(dynamic raw) {
+  if (raw == null) return '';
+  DateTime? dt;
+  if (raw is String) {
+    dt = DateTime.tryParse(raw);
+  } else if (raw is DateTime) {
+    dt = raw;
+  }
+  if (dt == null) return '';
+  final l = dt.toLocal();
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final mon = months[l.month - 1];
+  var hour12 = l.hour % 12;
+  if (hour12 == 0) hour12 = 12;
+  final min = l.minute.toString().padLeft(2, '0');
+  final ampm = l.hour < 12 ? 'AM' : 'PM';
+  return '$mon ${l.day}, ${l.year} · $hour12:$min $ampm';
+}

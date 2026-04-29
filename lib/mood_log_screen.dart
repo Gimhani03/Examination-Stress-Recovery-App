@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'sleep_hours_screen.dart';
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'profile_screen.dart';
-import 'recovery_tips_screen.dart';
 import 'mood_summary_screen.dart';
 import 'mood_flow_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -74,28 +72,18 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
       appBar: AppBar(
         backgroundColor: kMoodFlowBg,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  moodFlowGoTo(context, const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              moodFlowGoTo(context, const HomePage());
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -216,40 +204,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const ProfileScreen()),
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: const AppMainBottomNav(),
     );
   }
 
