@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'dart:async';
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'recovery_tips_screen.dart';
-import 'profile_screen.dart';
+import 'mood_flow_theme.dart';
 
 // ─── Data models ─────────────────────────────────────────────────────────────
 
@@ -21,7 +20,12 @@ class _Technique {
   /// If set, shown instead of [emoji] in the technique selector.
   final String? iconAsset;
   final List<_Phase> phases;
-  final List<Color> gradient;
+  /// Flat accent for neo UI (breathing disk + highlights).
+  final Color accent;
+  /// Slightly darker companion for text on mint surfaces.
+  final Color onAccent;
+  /// Gradient for the animated breathing orb (inhale / exhale).
+  final List<Color> diskGradient;
 
   const _Technique({
     required this.name,
@@ -29,7 +33,9 @@ class _Technique {
     this.emoji = '',
     this.iconAsset,
     required this.phases,
-    required this.gradient,
+    required this.accent,
+    required this.onAccent,
+    required this.diskGradient,
   });
 }
 
@@ -63,21 +69,24 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
         _Phase('Hold', 7),
         _Phase('Exhale', 8),
       ],
-      // Matches home “Breathing Exercise” card (readable deep teal)
-      gradient: [Color(0xFF115E59), Color(0xFF0D9488)],
+      accent: kMoodFlowTealNav,
+      onAccent: Color(0xFF042F2E),
+      diskGradient: [Color(0xFF115E59), Color(0xFF0D9488)],
     ),
     _Technique(
       name: 'Box Breathing',
       subtitle: 'Restore focus & calm',
-      emoji: '🧘',
+      iconAsset: 'assets/Breathing3.png',
       phases: [
         _Phase('Inhale', 4),
         _Phase('Hold', 4),
         _Phase('Exhale', 4),
         _Phase('Hold', 4),
       ],
-      // Cyan-teal sibling — distinct from 4-7-8, still calm (not purple/blue)
-      gradient: [Color(0xFF0E7490), Color(0xFF0891B2)],
+      // Same orb / halo palette as 4-7-8
+      accent: kMoodFlowTealNav,
+      onAccent: Color(0xFF042F2E),
+      diskGradient: [Color(0xFF115E59), Color(0xFF0D9488)],
     ),
   ];
 
@@ -88,6 +97,8 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
 
   late AnimationController _glowController;
   late Animation<double> _glowAnimation;
+  /// Hot reload keeps [State] but skips [initState]; lazily create glow animators.
+  bool _glowAnimatorsReady = false;
 
   int _techniqueIndex = 0;
   int _phaseIndex = 0;
@@ -124,19 +135,37 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
       CurvedAnimation(parent: _circleController, curve: Curves.easeInOut),
     );
 
+    _ensureGlowAnimators();
+  }
+
+  void _ensureGlowAnimators() {
+    if (_glowAnimatorsReady) return;
+    _glowAnimatorsReady = true;
     _glowController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 2200),
     )..repeat(reverse: true);
-    _glowAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
+    _glowAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _glowController, curve: Curves.easeInOutCubic),
     );
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    if (_glowAnimatorsReady) {
+      _glowController.dispose();
+      _glowAnimatorsReady = false;
+    }
+    _ensureGlowAnimators();
   }
 
   @override
   void dispose() {
     _circleController.dispose();
-    _glowController.dispose();
+    if (_glowAnimatorsReady) {
+      _glowController.dispose();
+    }
     _countdownTimer?.cancel();
     super.dispose();
   }
@@ -232,79 +261,95 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
   // ─── Completion sheet ──────────────────────────────────────────────────────
 
   void _showCompletionSheet() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(kMoodFlowNeoRadius)),
+        side: BorderSide(color: Colors.black, width: 2),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: kMoodCardCreamA,
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(28, 28, 28, 40),
+        padding: EdgeInsets.fromLTRB(
+          24,
+          16,
+          24,
+          24 + MediaQuery.of(ctx).padding.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 48,
-              height: 5,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                color: Colors.black12,
-                borderRadius: BorderRadius.circular(4),
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 24),
-            const Text('🎉', style: TextStyle(fontSize: 52)),
-            const SizedBox(height: 12),
-            const Text(
-              'Session Complete!',
+            const SizedBox(height: 20),
+            Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: kMoodMint,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.black, width: 2),
+                boxShadow: moodFlowNeoShadows(),
+              ),
+              child: const Text(
+                '✓',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.black),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Session complete',
               style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: kMoodFlowTealNav,
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'You finished all 4 rounds.\nTake a moment to notice how you feel.',
+            Text(
+              'You finished all 4 rounds.\nNotice how you feel for a moment.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: Colors.black54, height: 1.5),
+              style: TextStyle(
+                fontSize: 15,
+                color: Colors.black.withValues(alpha: 0.55),
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 26),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                    },
+                    onPressed: () => Navigator.pop(ctx),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(kMoodFlowNeoRadius - 6),
                       ),
-                      side: const BorderSide(color: Color(0xFF0D9488), width: 1.5),
+                      side: const BorderSide(color: Colors.black, width: 2),
+                      foregroundColor: Colors.black87,
                     ),
                     child: const Text(
-                      'Done',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F766E),
-                      ),
+                      'Close',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Container(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black,
-                          offset: Offset(3, 3),
-                          blurRadius: 0,
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(kMoodFlowNeoRadius - 6),
+                      boxShadow: moodFlowNeoShadows(),
                     ),
                     child: ElevatedButton(
                       onPressed: () {
@@ -312,18 +357,18 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
                         _start();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF5EEAD4),
+                        backgroundColor: kMoodMint,
                         foregroundColor: Colors.black,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: const BorderSide(color: Colors.black, width: 1.5),
+                          borderRadius: BorderRadius.circular(kMoodFlowNeoRadius - 6),
+                          side: const BorderSide(color: Colors.black, width: 2),
                         ),
                       ),
                       child: const Text(
                         'Again',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                       ),
                     ),
                   ),
@@ -344,10 +389,11 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
     return _currentPhase.label;
   }
 
-  Color get _accentColor => _technique.gradient.first;
+  Color get _accentColor => _technique.accent;
 
   void _goTo(Widget screen) {
     _stop();
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => screen),
@@ -359,45 +405,42 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
 
   @override
   Widget build(BuildContext context) {
+    _ensureGlowAnimators();
+
     final screenW = MediaQuery.of(context).size.width;
     final minSize = screenW * 0.38;
     final maxSize = screenW * 0.65;
+    final frame = (maxSize * 1.16 + 40).clamp(maxSize + 28, 420.0);
+
+    const neoBorder = BorderSide(color: Colors.black, width: 2);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFEDE9FE),
+      backgroundColor: kMoodFlowBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFEDE9FE),
+        backgroundColor: kMoodFlowBg,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                _stop();
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  _goTo(const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          iconSize: 22,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
+          onPressed: () {
+            _stop();
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              _goTo(const HomePage());
+            }
+          },
         ),
         title: const Text(
           'Breathing',
           style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+            color: Colors.black,
           ),
         ),
         centerTitle: true,
@@ -405,302 +448,300 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Technique selector (hidden while running) ──────────────────
               if (!_isRunning) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: List.generate(_techniques.length, (i) {
                     final t = _techniques[i];
                     final selected = _techniqueIndex == i;
                     return Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _techniqueIndex = i),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          margin: EdgeInsets.only(
-                            right: i == 0 ? 8 : 0,
-                            left: i == 1 ? 8 : 0,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 16, horizontal: 10),
-                          decoration: BoxDecoration(
-                            gradient: selected
-                                ? LinearGradient(
-                                    colors: t.gradient,
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
-                                : null,
-                            color: selected ? null : Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: selected
-                                  ? Colors.transparent
-                                  : const Color(0xFF0D9488),
-                              width: 2,
+                      child: Padding(
+                        padding: EdgeInsets.only(right: i == 0 ? 8 : 0, left: i == 1 ? 8 : 0),
+                        child: GestureDetector(
+                          onTap: () => setState(() => _techniqueIndex = i),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOutCubic,
+                            transform: Matrix4.translationValues(
+                              selected ? -2 : 0,
+                              selected ? -2 : 0,
+                              0,
                             ),
-                            boxShadow: selected
-                                ? [
-                                    BoxShadow(
-                                      color:
-                                          t.gradient.first.withOpacity(0.38),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 5),
-                                    )
-                                  ]
-                                : [],
-                          ),
-                          child: Column(
-                            children: [
-                              SizedBox(
-                                height: 32,
-                                width: 32,
-                                child: t.iconAsset != null
-                                    ? Image.asset(
-                                        t.iconAsset!,
-                                        fit: BoxFit.contain,
-                                      )
-                                    : Center(
-                                        child: Text(
-                                          t.emoji,
-                                          style: const TextStyle(
-                                              fontSize: 28),
+                            padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
+                            decoration: BoxDecoration(
+                              color: selected ? kMoodMint : kMoodCardCreamA,
+                              borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+                              border: Border.fromBorderSide(neoBorder),
+                              boxShadow: selected ? moodFlowNeoShadows() : const [],
+                            ),
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  height: 36,
+                                  width: 36,
+                                  child: t.iconAsset != null
+                                      ? Image.asset(
+                                          t.iconAsset!,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) => const Icon(
+                                            Icons.air_rounded,
+                                            size: 28,
+                                            color: Colors.black87,
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Text(t.emoji, style: const TextStyle(fontSize: 30)),
                                         ),
-                                      ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                t.name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color:
-                                      selected ? Colors.white : Colors.black87,
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                t.subtitle,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: selected
-                                      ? Colors.white70
-                                      : Colors.black54,
+                                const SizedBox(height: 10),
+                                Text(
+                                  t.name,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.2,
+                                    color: selected ? t.onAccent : Colors.black87,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
+                                const SizedBox(height: 4),
+                                Text(
+                                  t.subtitle,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: selected
+                                        ? t.onAccent.withValues(alpha: 0.72)
+                                        : Colors.black.withValues(alpha: 0.45),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     );
                   }),
                 ),
-                const SizedBox(height: 20),
-
-                // ── Phase steps breakdown ──────────────────────────────────
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 14, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: const Color(0xFF0D9488), width: 1.5),
+                    borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+                    border: Border.fromBorderSide(neoBorder),
+                    boxShadow: moodFlowNeoShadows(),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: _technique.phases
-                        .map(
-                          (p) => Column(
+                    children: [
+                      for (var i = 0; i < _technique.phases.length; i++) ...[
+                        if (i > 0)
+                          Container(
+                            width: 1,
+                            height: 44,
+                            color: Colors.black.withValues(alpha: 0.12),
+                          ),
+                        Expanded(
+                          child: Column(
                             children: [
                               Text(
-                                p.label,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black54,
-                                  fontWeight: FontWeight.w600,
+                                _technique.phases[i].label.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: Colors.black.withValues(alpha: 0.4),
                                 ),
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                '${p.seconds}s',
+                                '${_technique.phases[i].seconds}s',
                                 style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
                                   color: _accentColor,
                                 ),
                               ),
                             ],
                           ),
-                        )
-                        .toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
+              if (_isRunning) ...[
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.fromBorderSide(neoBorder),
+                    ),
+                    child: Text(
+                      'ROUND $_round / $_totalRounds',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: Colors.black87,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
               ],
 
-              // ── Round indicator (visible while running) ───────────────────
-              if (_isRunning) ...[
-                const SizedBox(height: 8),
-                Center(
-                  child: Text(
-                    'Round $_round of $_totalRounds',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black54,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              const SizedBox(height: 16),
-
-              // ── Animated breathing circle ─────────────────────────────────
               SizedBox(
-                height: maxSize + 60,
+                height: frame + 36,
                 child: Center(
                   child: AnimatedBuilder(
-                    animation:
-                        Listenable.merge([_sizeAnimation, _glowAnimation]),
+                    animation: Listenable.merge([_sizeAnimation, _glowAnimation]),
                     builder: (context, _) {
                       final sz =
                           minSize + (maxSize - minSize) * _sizeAnimation.value;
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Outer glow halo
-                          Container(
-                            width: sz * _glowAnimation.value + 32,
-                            height: sz * _glowAnimation.value + 32,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _accentColor.withOpacity(0.07),
-                            ),
-                          ),
-                          // Mid ring
-                          Container(
-                            width: sz + 16,
-                            height: sz + 16,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _accentColor.withOpacity(0.13),
-                            ),
-                          ),
-                          // Main circle
-                          Container(
-                            width: sz,
-                            height: sz,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: _technique.gradient,
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
+                      final g = _glowAnimation.value;
+                      final haloOuter = sz * g + 32;
+                      final midRing = sz + 16;
+                      return SizedBox(
+                        width: frame,
+                        height: frame,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: haloOuter.clamp(0.0, frame),
+                              height: haloOuter.clamp(0.0, frame),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _accentColor.withValues(alpha: 0.08),
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _accentColor.withOpacity(0.45),
-                                  blurRadius: 28,
-                                  offset: const Offset(0, 10),
-                                ),
-                              ],
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  _phaseLabel,
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                            Container(
+                              width: midRing.clamp(0.0, frame),
+                              height: midRing.clamp(0.0, frame),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _accentColor.withValues(alpha: 0.14),
+                              ),
+                            ),
+                            Container(
+                              width: sz,
+                              height: sz,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  colors: _technique.diskGradient,
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
-                                if (_isRunning) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '$_countdown',
-                                    style: const TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                    ),
+                                border: Border.fromBorderSide(neoBorder),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _accentColor.withValues(alpha: 0.38),
+                                    blurRadius: 22,
+                                    offset: const Offset(0, 8),
                                   ),
                                 ],
-                              ],
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _phaseLabel,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: -0.3,
+                                    ),
+                                  ),
+                                  if (_isRunning) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '$_countdown',
+                                      style: const TextStyle(
+                                        fontSize: 44,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        height: 1,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       );
                     },
                   ),
                 ),
               ),
 
-              // ── Phase progress dots ───────────────────────────────────────
               if (_isRunning) ...[
+                const SizedBox(height: 8),
                 Center(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: List.generate(
                       _technique.phases.length,
-                      (i) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 5),
-                        width: i == _phaseIndex ? 28 : 10,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: i == _phaseIndex
-                              ? _accentColor
-                              : Colors.black12,
-                          borderRadius: BorderRadius.circular(4),
+                      (i) => Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          width: i == _phaseIndex ? 36 : 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: i == _phaseIndex ? _accentColor : Colors.white,
+                            borderRadius: BorderRadius.circular(3),
+                            border: Border.fromBorderSide(neoBorder),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 22),
               ] else
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
 
-              // ── Start / Stop button ───────────────────────────────────────
-              Container(
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black,
-                      offset: Offset(3, 3),
-                      blurRadius: 0,
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(kMoodFlowNeoRadius - 4),
+                  boxShadow: _isRunning ? const [] : moodFlowNeoShadows(),
                 ),
                 child: ElevatedButton(
                   onPressed: _isRunning ? _stop : _start,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isRunning
-                        ? Colors.white
-                        : const Color(0xFF5EEAD4),
+                    backgroundColor: _isRunning ? Colors.white : kMoodMint,
                     foregroundColor: Colors.black,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      side: const BorderSide(color: Colors.black, width: 1.5),
+                      borderRadius: BorderRadius.circular(kMoodFlowNeoRadius - 4),
+                      side: neoBorder,
                     ),
                   ),
                   child: Text(
-                    _isRunning ? 'Stop Session' : 'Start Breathing',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+                    _isRunning ? 'Stop session' : 'Start',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                 ),
               ),
@@ -711,45 +752,7 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
         ),
       ),
 
-      // ── Bottom navigation ──────────────────────────────────────────────────
-      bottomNavigationBar: Container(
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(const ProfileScreen()),
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: const AppMainBottomNav(),
     );
   }
 }
