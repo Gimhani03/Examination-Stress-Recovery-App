@@ -1,22 +1,33 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'mood_log_screen.dart';
 import 'services/focus_timer_service.dart';
 import 'mood_summary_screen.dart';
 import 'emotion_board_screen.dart';
-import 'profile_screen.dart';
 import 'challenges_screen.dart';
 import 'calendar_screen.dart';
 import 'focus_timer_screen.dart';
 import 'recovery_tips_screen.dart';
 import 'services/mood_log_service.dart';
-import 'chat_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'music_recommendation_screen.dart';
+import 'widgets/app_main_bottom_nav.dart';
 import 'widgets/mini_player.dart';
 import 'breathing_exercise_screen.dart';
+import 'notification_inbox_screen.dart';
+import 'services/reminder_service.dart';
+import 'services/social_notification_service.dart';
+import 'notification_payload_handler.dart' show tryFlushPendingEmotionPostOpen;
 
 const double _kHomeNeoCardRadius = 22;
+
+/// Slightly left of [Alignment.centerRight] so suggestion images sit clear of the card edge.
+const Alignment _kSuggestionImageAlignment = Alignment(0.58, 0.0);
+
+const int _kSuggestionTextFlex = 3;
+const int _kSuggestionImageFlex = 2;
+const double _kSuggestionImageMaxSide = 120;
 
 List<BoxShadow> _homeNeoCardShadows() => [
       BoxShadow(
@@ -109,11 +120,29 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Re-schedule local notifications with latest mood text and calendar events.
+  Future<void> _syncReminderSchedules() async {
+    try {
+      if (Supabase.instance.client.auth.currentUser == null) {
+        return;
+      }
+      await ReminderService.instance.ensureInitialized();
+      await ReminderService.instance.applySchedulesFromPreferences();
+    } catch (e) {
+      debugPrint('Reminder sync: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _loadFocusSessions();
     _loadTodayMood();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncReminderSchedules();
+      SocialNotificationService.instance.start();
+      tryFlushPendingEmotionPostOpen();
+    });
     _pageController = PageController();
     _pageController.addListener(() {
       setState(() {
@@ -239,7 +268,14 @@ class _HomePageState extends State<HomePage> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.notifications_rounded, color: headerInk, size: 28),
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationInboxScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -283,52 +319,25 @@ class _HomePageState extends State<HomePage> {
   Widget _buildSuggestionsHeader() {
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF8B5CF6), Color(0xFF3B82F6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.black, width: 2),
-              boxShadow: _homeNeoCardShadows(),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 24,
+          const Text(
+            'Suggestions',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF1E1B4B),
+              letterSpacing: -0.3,
             ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Suggestions',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF1E1B4B),
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Quick picks from this app',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black.withValues(alpha: 0.42),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 3),
+          Text(
+            'Quick picks from this app',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.black.withValues(alpha: 0.42),
             ),
           ),
         ],
@@ -351,8 +360,44 @@ class _HomePageState extends State<HomePage> {
         height: 1.28,
       );
 
+  /// Image column for suggestion slides: width-capped so 120px art does not clip in a narrow flex slot.
+  /// [nudgeRight] shifts the art east (same [width]/[height]) to clear tight copy e.g. "tracks".
+  Widget _suggestionSlideImageCell(
+    String assetPath, {
+    double maxSide = _kSuggestionImageMaxSide,
+    double nudgeRight = 0,
+  }) {
+    return Expanded(
+      flex: _kSuggestionImageFlex,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final side = math.min(
+            maxSide,
+            math.max(48.0, constraints.maxWidth - 10),
+          );
+          Widget img = Image.asset(
+            assetPath,
+            width: side,
+            height: side,
+            fit: BoxFit.contain,
+          );
+          if (nudgeRight != 0) {
+            img = Transform.translate(
+              offset: Offset(nudgeRight, 0),
+              child: img,
+            );
+          }
+          return Align(
+            alignment: _kSuggestionImageAlignment,
+            child: img,
+          );
+        },
+      ),
+    );
+  }
+
   /// First and last slides in the infinite PageView — opens [BreathingExerciseScreen].
-  Widget _homeSuggestionBreathingSlide({double imageSize = 120}) {
+  Widget _homeSuggestionBreathingSlide({double imageSize = _kSuggestionImageMaxSide}) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -366,24 +411,24 @@ class _HomePageState extends State<HomePage> {
       child: Container(
         margin: const EdgeInsets.only(left: 4, right: 4),
         decoration: _suggestionSlideDecoration(const Color(0xFFD1FAE5)),
-        padding: const EdgeInsets.fromLTRB(18, 10, 10, 10),
+        padding: const EdgeInsets.fromLTRB(18, 10, 14, 10),
         child: Row(
           children: [
             Expanded(
-              flex: 2,
+              flex: _kSuggestionTextFlex,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     'Breathing Exercise',
-                    style: _suggestionCardTitle(const Color(0xFF047857)),
+                    style: _suggestionCardTitle(const Color.fromARGB(255, 2, 74, 54)),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Guided breathing matched to your mood — tap to start.',
+                    'Try out guided breathing matched to your mood.',
                     style: _suggestionCardBody(
-                      const Color(0xFF059669),
+                      const Color.fromARGB(255, 38, 113, 89),
                       alpha: 0.9,
                     ),
                     maxLines: 3,
@@ -392,93 +437,25 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-            Expanded(
-              flex: 1,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Image(
-                  image: const AssetImage('assets/Image2.png'),
-                  width: imageSize,
-                  height: imageSize,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
+            _suggestionSlideImageCell('assets/Breathing.png', maxSide: imageSize),
           ],
         ),
       ),
     );
   }
 
-  Widget _homeNavItem(IconData icon, bool active, VoidCallback onPressed) {
-    return IconButton(
-      icon: Icon(
-        icon,
-        color: active ? const Color(0xFF7C3AED) : Colors.grey[400],
-        size: 28,
-      ),
-      onPressed: onPressed,
-    );
-  }
-
-  Widget _buildHomeBottomNav() {
-    return Container(
-      height: 64,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.07),
-            blurRadius: 14,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _homeNavItem(Icons.home_rounded, true, () {}),
-          _homeNavItem(
-            Icons.chat_bubble_outline_rounded,
-            false,
-            () => Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const EmotionBoardScreen()),
-              (r) => false,
-            ),
-          ),
-          _homeNavItem(
-            Icons.lightbulb_rounded,
-            false,
-            () => Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(
-                builder: (_) => RecoveryTipsScreen(
-                  mood: _currentMood,
-                  moodImage: _currentMoodImage,
-                ),
-              ),
-              (r) => false,
-            ),
-          ),
-          _homeNavItem(
-            Icons.person_outline_rounded,
-            false,
-            () => Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              (r) => false,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final showHomeMusic =
+        _currentMood != null && _currentMoodImage != null;
+    final showHomeBreathing = _currentMood != null &&
+        (_currentMood == 'anxious' ||
+            _currentMood == 'sad' ||
+            _currentMood == 'tired' ||
+            _currentMood == 'calm');
+
     return Scaffold(
-      backgroundColor: const Color(0xFFEDE9FE),
+      backgroundColor: const Color(0xFFE3F2FD),
       body: Column(
         children: [
           _buildHomeHeader(),
@@ -522,9 +499,181 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
-              // Music Recommendation Card
-              if (_currentMood != null && _currentMoodImage != null) ...[
-                const SizedBox(height: 16),
+              const SizedBox(height: 28),
+
+              _buildSuggestionsHeader(),
+
+              // Suggestions Slider
+              SizedBox(
+                height: 170,
+                child: PageView(
+                  controller: _pageController,
+                  padEnds: true,
+                  pageSnapping: true,
+                  physics: ClampingScrollPhysics(),
+                  clipBehavior: Clip.none,
+                  children: [
+                    _homeSuggestionBreathingSlide(),
+                    // Recovery Tips — Gemini-powered screen (bottom nav lightbulb)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                RecoveryTipsScreen(
+                                  mood: _currentMood,
+                                  moodImage: _currentMoodImage,
+                                ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 4, right: 4),
+                        decoration: _suggestionSlideDecoration(
+                            const Color(0xFFF3E8FF)),
+                        padding: const EdgeInsets.fromLTRB(18, 10, 14, 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: _kSuggestionTextFlex,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Recovery Tips',
+                                    style: _suggestionCardTitle(
+                                        const Color(0xFF6B21A8)),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'AI based recovery tips tailored to how your mood',
+                                    style: _suggestionCardBody(
+                                      const Color.fromARGB(255, 89, 61, 137),
+                                      alpha: 0.88,
+                                    ),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _suggestionSlideImageCell('assets/Motivation.png'),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Mood log + sleep — feeds Progress & music
+                    GestureDetector(
+                      onTap: _openMoodLog,
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 4, right: 4),
+                        decoration: _suggestionSlideDecoration(
+                            const Color(0xFFE0E7FF)),
+                        padding: const EdgeInsets.fromLTRB(18, 10, 14, 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: _kSuggestionTextFlex,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Mood log',
+                                    style: _suggestionCardTitle(
+                                        const Color.fromARGB(255, 42, 39, 124)),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Log mood, sleep, goals and get personalized challenges, recovery tips, music tracks.',
+                                    style: _suggestionCardBody(
+                                      const Color.fromARGB(255, 66, 61, 117),
+                                      alpha: 0.88,
+                                    ),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _suggestionSlideImageCell(
+                              'assets/Onboarding7.png',
+                              nudgeRight: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Focus Timer — Tools section
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const FocusTimerScreen(),
+                          ),
+                        ).then((_) => _loadFocusSessions());
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 4, right: 4),
+                        decoration: _suggestionSlideDecoration(
+                            const Color(0xFFFFEDD5)),
+                        padding: const EdgeInsets.fromLTRB(18, 10, 14, 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: _kSuggestionTextFlex,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Focus Timer',
+                                    style: _suggestionCardTitle(
+                                        const Color(0xFFC2410C)),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Try Pomodoro-style focus \n timer while you study.',
+                                    style: _suggestionCardBody(
+                                      const Color(0xFFEA580C),
+                                      alpha: 0.88,
+                                    ),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _suggestionSlideImageCell('assets/FocusTimer.png'),
+                          ],
+                        ),
+                      ),
+                    ),
+                    _homeSuggestionBreathingSlide(),
+                  ],
+                ),
+              ),
+              
+              // Listen to page changes for infinite loop
+              Listener(
+                onPointerDown: (_) {
+                  // Pause auto-scroll when user touches
+                  _autoScrollTimer.cancel();
+                },
+                onPointerUp: (_) {
+                  // Resume auto-scroll when user releases
+                  _startAutoScroll();
+                },
+                child: SizedBox.shrink(),
+              ),
+
+              if (showHomeMusic || showHomeBreathing)
+                const SizedBox(height: 28),
+              if (showHomeMusic) ...[
+                _homeSectionTitle('Mood Music'),
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
@@ -540,7 +689,7 @@ class _HomePageState extends State<HomePage> {
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFF5F0FF), Color(0xFFEDE4FF)],
+                        colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -562,7 +711,7 @@ class _HomePageState extends State<HomePage> {
                               height: 100,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: const Color(0xFF8B5CF6)
+                                color: const Color(0xFF3B82F6)
                                     .withValues(alpha: 0.12),
                               ),
                             ),
@@ -575,7 +724,7 @@ class _HomePageState extends State<HomePage> {
                               height: 80,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: const Color(0xFF7C3AED)
+                                color: const Color(0xFF2563EB)
                                     .withValues(alpha: 0.08),
                               ),
                             ),
@@ -591,9 +740,9 @@ class _HomePageState extends State<HomePage> {
                                   height: 54,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: const Color(0xFFEDE4FF),
+                                    color: const Color(0xFFDBEAFE),
                                     border: Border.all(
-                                      color: const Color(0xFF7C3AED)
+                                      color: const Color(0xFF2563EB)
                                           .withValues(alpha: 0.35),
                                       width: 2,
                                     ),
@@ -619,12 +768,12 @@ class _HomePageState extends State<HomePage> {
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFFDDD6FE),
+                                          color: const Color(0xFFBFDBFE),
                                           borderRadius:
                                               BorderRadius.circular(20),
                                           border: Border.all(
-                                            color: const Color(0xFF7C3AED)
-                                                .withValues(alpha: 0.2),
+                                            color: const Color(0xFF2563EB)
+                                                .withValues(alpha: 0.22),
                                           ),
                                         ),
                                         child: Row(
@@ -632,7 +781,7 @@ class _HomePageState extends State<HomePage> {
                                           children: [
                                             Icon(
                                               Icons.headphones_rounded,
-                                              color: Color(0xFF5B21B6),
+                                              color: Color(0xFF1D4ED8),
                                               size: 12,
                                             ),
                                             const SizedBox(width: 4),
@@ -641,7 +790,7 @@ class _HomePageState extends State<HomePage> {
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w800,
-                                                color: Color(0xFF5B21B6),
+                                                color: Color(0xFF1D4ED8),
                                                 letterSpacing: 0.8,
                                               ),
                                             ),
@@ -680,7 +829,7 @@ class _HomePageState extends State<HomePage> {
                                   width: 32,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFDDD6FE),
+                                    color: const Color(0xFFBFDBFE),
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: Colors.black.withValues(
@@ -689,7 +838,7 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                   child: const Icon(
                                     Icons.arrow_forward_ios_rounded,
-                                    color: Color(0xFF5B21B6),
+                                    color: Color(0xFF1D4ED8),
                                     size: 14,
                                   ),
                                 ),
@@ -703,10 +852,9 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
 
-              // Mood-based breathing suggestion banner
-              if (_currentMood != null &&
-                  (_currentMood == 'anxious' || _currentMood == 'sad')) ...[
-                const SizedBox(height: 16),
+              if (showHomeBreathing) ...[
+                if (showHomeMusic) const SizedBox(height: 28),
+                _homeSectionTitle('Breathing Exercise '),
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
@@ -803,7 +951,7 @@ class _HomePageState extends State<HomePage> {
                                             ),
                                             const SizedBox(width: 4),
                                             Text(
-                                              'FOR YOU',
+                                              'Breathing Exercise',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w800,
@@ -830,7 +978,9 @@ class _HomePageState extends State<HomePage> {
                                       Text(
                                         _currentMood == 'anxious'
                                             ? 'Try 4-7-8 to calm your mind'
-                                            : 'A breathing session can help',
+                                            : _currentMood == 'tired'
+                                                ? 'Try box breathing for focus and energy'
+                                                : 'A breathing session can help',
                                         style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w600,
@@ -870,207 +1020,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ],
-
-              const SizedBox(height: 28),
-
-              _buildSuggestionsHeader(),
-
-              // Suggestions Slider
-              SizedBox(
-                height: 170,
-                child: PageView(
-                  controller: _pageController,
-                  padEnds: true,
-                  pageSnapping: true,
-                  physics: ClampingScrollPhysics(),
-                  children: [
-                    _homeSuggestionBreathingSlide(),
-                    // Recovery Tips — Gemini-powered screen (bottom nav lightbulb)
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                RecoveryTipsScreen(
-                                  mood: _currentMood,
-                                  moodImage: _currentMoodImage,
-                                ),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 4, right: 4),
-                        decoration: _suggestionSlideDecoration(
-                            const Color(0xFFF3E8FF)),
-                        padding: const EdgeInsets.fromLTRB(18, 10, 8, 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'Recovery Tips',
-                                    style: _suggestionCardTitle(
-                                        const Color(0xFF6B21A8)),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Relaxation & tips for your mood — like the lightbulb tab.',
-                                    style: _suggestionCardBody(
-                                      const Color(0xFF7C3AED),
-                                      alpha: 0.88,
-                                    ),
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(
-                              width: 72,
-                              height: 72,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Icon(
-                                  Icons.lightbulb_rounded,
-                                  size: 56,
-                                  color: Color(0xFF7C3AED)
-                                      .withValues(alpha: 0.45),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Mood log + sleep — feeds Progress & music
-                    GestureDetector(
-                      onTap: _openMoodLog,
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 4, right: 4),
-                        decoration: _suggestionSlideDecoration(
-                            const Color(0xFFE0E7FF)),
-                        padding: const EdgeInsets.fromLTRB(18, 10, 10, 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'Mood & sleep log',
-                                    style: _suggestionCardTitle(
-                                        const Color(0xFF312E81)),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Log mood & sleep — updates Progress and music picks.',
-                                    style: _suggestionCardBody(
-                                      const Color(0xFF4338CA),
-                                      alpha: 0.88,
-                                    ),
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              flex: 1,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Icon(
-                                  Icons.edit_note_rounded,
-                                  size: 72,
-                                  color: Color(0xFF6366F1)
-                                      .withValues(alpha: 0.42),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Focus Timer — Tools section
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const FocusTimerScreen(),
-                          ),
-                        ).then((_) => _loadFocusSessions());
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 4, right: 4),
-                        decoration: _suggestionSlideDecoration(
-                            const Color(0xFFFFEDD5)),
-                        padding: const EdgeInsets.fromLTRB(18, 10, 10, 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'Focus Timer',
-                                    style: _suggestionCardTitle(
-                                        const Color(0xFFC2410C)),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Timed focus in Tools — sessions count on Progress.',
-                                    style: _suggestionCardBody(
-                                      const Color(0xFFEA580C),
-                                      alpha: 0.88,
-                                    ),
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              flex: 1,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Icon(
-                                  Icons.timer_outlined,
-                                  size: 72,
-                                  color: Color(0xFFF97316)
-                                      .withValues(alpha: 0.48),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    _homeSuggestionBreathingSlide(),
-                  ],
-                ),
-              ),
-              
-              // Listen to page changes for infinite loop
-              Listener(
-                onPointerDown: (_) {
-                  // Pause auto-scroll when user touches
-                  _autoScrollTimer.cancel();
-                },
-                onPointerUp: (_) {
-                  // Resume auto-scroll when user releases
-                  _startAutoScroll();
-                },
-                child: SizedBox.shrink(),
-              ),
 
               const SizedBox(height: 28),
 
@@ -1342,52 +1291,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-
-              // Tools Cards Grid — row 2
-              Row(
-                children: [
-                  // Breathe Card
-                  Expanded(
-                    child: _ToolCard(
-                      gradientColors: const [Color(0xFFCCFBF1), Color(0xFF99F6E4)],
-                      iconWidget: Image.asset(
-                        'assets/BreathIcon.png',
-                        width: 30,
-                        height: 30,
-                        fit: BoxFit.contain,
-                      ),
-                      iconBg: const Color(0xFF5EEAD4),
-                      label: 'Breathe',
-                      sublabel: 'Calm exercises',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              BreathingExerciseScreen(mood: _currentMood),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // AI Chat Card
-                  Expanded(
-                    child: _ToolCard(
-                      gradientColors: const [Color(0xFFF5F0FF), Color(0xFFEDE9FE)],
-                      iconWidget: const Icon(Icons.psychology_outlined,
-                          size: 30, color: Color(0xFF7C3AED)),
-                      iconBg: const Color(0xFFDDD6FE),
-                      label: 'AI Chat',
-                      sublabel: 'Study companion',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const ChatScreen()),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -1398,7 +1301,11 @@ class _HomePageState extends State<HomePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const MiniPlayer(),
-          _buildHomeBottomNav(),
+          AppMainBottomNav(
+            current: AppMainNavTab.home,
+            tipsMood: _currentMood,
+            tipsMoodImage: _currentMoodImage,
+          ),
         ],
       ),
     );
