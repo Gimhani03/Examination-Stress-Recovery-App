@@ -12,6 +12,18 @@ import 'package:uuid/uuid.dart';
 /// Local id for messages stored before `conversation_id` existed (column null in DB).
 const String kLegacyChatConversationId = '__legacy__';
 
+List<Map<String, dynamic>> _mapChatRows(List<dynamic> rows) {
+  return rows
+      .map((item) => {
+            'id': item['id']?.toString() ?? '',
+            'role': item['role']?.toString() ?? 'user',
+            'content': item['content']?.toString() ?? '',
+            'timestamp': item['created_at']?.toString() ??
+                DateTime.now().toIso8601String(),
+          })
+      .toList();
+}
+
 class GeminiChatService {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const _cacheKey = 'chat_messages_cache';
@@ -34,15 +46,30 @@ class GeminiChatService {
   /// Picks saved active thread, or the most recent thread, or a new empty thread.
   Future<String> ensureInitialConversationId() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_prefsActiveConversationKey);
-    if (saved != null && saved.isNotEmpty) {
-      return saved;
-    }
-
     final user = _supabase.auth.currentUser;
 
+    List<ChatThreadSummary> threads = [];
     try {
-      final threads = await listChatThreads();
+      threads = await listChatThreads();
+    } catch (_) {
+      threads = [];
+    }
+
+    final saved = prefs.getString(_prefsActiveConversationKey);
+    if (saved != null && saved.isNotEmpty) {
+      final hasSavedThread = threads.any((t) => t.id == saved);
+      if (hasSavedThread) {
+        return saved;
+      }
+      try {
+        final peek = await getChatHistory(conversationId: saved, limit: 1);
+        if (peek.isNotEmpty) {
+          return saved;
+        }
+      } catch (_) {}
+    }
+
+    try {
       if (threads.isNotEmpty) {
         final id = threads.first.id;
         await prefs.setString(_prefsActiveConversationKey, id);
@@ -326,10 +353,12 @@ Assistant:''';
       throw const AuthException('User not signed in');
     }
 
+    const columns = 'id, role, content, created_at, conversation_id';
+
     try {
-      dynamic query = _supabase
+      var query = _supabase
           .from('chat_messages')
-          .select()
+          .select(columns)
           .eq('user_id', user.id);
 
       if (conversationId == kLegacyChatConversationId) {
@@ -338,21 +367,50 @@ Assistant:''';
         query = query.eq('conversation_id', conversationId);
       }
 
-      final response = await query
-          .order('created_at', ascending: false)
-          .limit(limit);
+      final response =
+          await query.order('created_at', ascending: false).limit(limit);
 
-      return response.map((item) {
-        return {
-          'id': item['id'],
-          'role': item['role'],
-          'content': item['content'],
-          'timestamp': item['created_at'],
-        };
-      }).toList();
+      final mapped = _mapChatRows(response);
+      if (mapped.isNotEmpty) {
+        return mapped;
+      }
     } catch (_) {
-      return _loadFromCache(user.id, conversationId);
+      // Fall through to client-side filter fallback.
     }
+
+    // Fallback: same fetch path as listChatThreads, filter client-side.
+    try {
+      final response = await _supabase
+          .from('chat_messages')
+          .select(columns)
+          .eq('user_id', user.id)
+          .order('created_at', ascending: false)
+          .limit(500);
+
+      final filtered = <Map<String, dynamic>>[];
+      for (final item in response) {
+        final rawCid = item['conversation_id'] as String?;
+        final cid = (rawCid == null || rawCid.isEmpty)
+            ? kLegacyChatConversationId
+            : rawCid;
+        if (cid != conversationId) continue;
+        filtered.add({
+          'id': item['id']?.toString() ?? '',
+          'role': item['role']?.toString() ?? 'user',
+          'content': item['content']?.toString() ?? '',
+          'timestamp': item['created_at']?.toString() ??
+              DateTime.now().toIso8601String(),
+        });
+        if (filtered.length >= limit) break;
+      }
+      if (filtered.isNotEmpty) {
+        return filtered;
+      }
+    } catch (_) {
+      // Fall through to local cache.
+    }
+
+    return _loadFromCache(user.id, conversationId);
   }
 
   Future<void> saveChatMessage({

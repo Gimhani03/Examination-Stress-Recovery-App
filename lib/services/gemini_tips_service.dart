@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RecoveryTips {
   final String relaxationTitle;
@@ -57,15 +58,78 @@ class GeminiTipsService {
     'gemini-2.0-flash'
   ];
 
-  Future<RecoveryTips> getTips({required String mood}) async {
+  static final Map<String, Future<RecoveryTips>> _inflightByKey = {};
+
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  String _normalizeMoodKey(String? mood) {
+    final t = mood?.trim().toLowerCase() ?? '';
+    if (t.isEmpty) return 'calm';
+    return t;
+  }
+
+  String _tipsInflightKey(
+    String userId,
+    String moodKey,
+    String sleepHours,
+    List<String> goals,
+  ) {
+    final g = List<String>.from(goals)..sort();
+    return '$userId|$moodKey|$sleepHours|${g.join('\u0001')}';
+  }
+
+  Future<RecoveryTips> getTips({
+    required String mood,
+    required String sleepHours,
+    required List<String> goals,
+  }) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      throw Exception('User not signed in');
+    }
+
+    final userId = user.id;
+    final m = _normalizeMoodKey(mood);
+    final sleep = sleepHours.trim();
+    final goalsList = List<String>.from(goals);
+
     final prefs = await SharedPreferences.getInstance();
-    final history = _loadHistory(prefs);
+    final history = _loadHistory(prefs, userId);
     final today = _todayKey();
 
-    if (history.isNotEmpty && history.first['date'] == today && history.first['mood'] == mood) {
+    if (history.isNotEmpty &&
+        history.first['date'] == today &&
+        _normalizeMoodKey(history.first['mood'] as String?) == m &&
+        (history.first['sleepHours'] as String? ?? '') == sleep &&
+        _goalsMatch(history.first['goals'] as List<dynamic>?, goalsList)) {
       return RecoveryTips.fromMap(history.first['tips'] as Map<String, dynamic>);
     }
 
+    final inflightKey = _tipsInflightKey(userId, m, sleep, goalsList);
+    return _inflightByKey.putIfAbsent(inflightKey, () {
+      final future = _fetchTipsForMood(
+        userId: userId,
+        moodKey: m,
+        sleepHours: sleep,
+        goals: goalsList,
+        prefs: prefs,
+        history: history,
+        today: today,
+      );
+      future.whenComplete(() => _inflightByKey.remove(inflightKey));
+      return future;
+    });
+  }
+
+  Future<RecoveryTips> _fetchTipsForMood({
+    required String userId,
+    required String moodKey,
+    required String sleepHours,
+    required List<String> goals,
+    required SharedPreferences prefs,
+    required List<Map<String, dynamic>> history,
+    required String today,
+  }) async {
     final recentSummaries = history.take(7).map((entry) {
       final tips = entry['tips'] as Map<String, dynamic>;
       return {
@@ -91,7 +155,9 @@ class GeminiTipsService {
           tips = await _generateTips(
             apiKey: apiKey,
             model: model,
-            mood: mood,
+            mood: moodKey,
+            sleepHours: sleepHours,
+            goals: goals,
             recentSummaries: recentSummaries,
             avoidExact: lastCombined,
           );
@@ -132,11 +198,13 @@ class GeminiTipsService {
 
     final entry = {
       'date': today,
-      'mood': mood,
+      'mood': moodKey,
+      'sleepHours': sleepHours,
+      'goals': goals,
       'tips': resolvedTips.toMap(),
     };
     final updated = [entry, ...history];
-    await prefs.setString(_historyKey, jsonEncode(updated));
+    await prefs.setString('${_historyKey}_$userId', jsonEncode(updated));
 
     return resolvedTips;
   }
@@ -145,6 +213,8 @@ class GeminiTipsService {
     required String apiKey,
     required String model,
     required String mood,
+    required String sleepHours,
+    required List<String> goals,
     required List<Map<String, dynamic>> recentSummaries,
     String? avoidExact,
     bool strictPrompt = false,
@@ -153,7 +223,14 @@ class GeminiTipsService {
       'https://generativelanguage.googleapis.com/v1/models/$model:generateContent?key=$apiKey',
     );
 
-    final prompt = _buildPrompt(mood, recentSummaries, avoidExact, strictPrompt);
+    final prompt = _buildPrompt(
+      mood,
+      sleepHours,
+      goals,
+      recentSummaries,
+      avoidExact,
+      strictPrompt,
+    );
     final response = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
@@ -200,6 +277,8 @@ class GeminiTipsService {
           apiKey: apiKey,
           model: model,
           mood: mood,
+          sleepHours: sleepHours,
+          goals: goals,
           recentSummaries: recentSummaries,
           avoidExact: avoidExact,
           strictPrompt: true,
@@ -225,6 +304,8 @@ class GeminiTipsService {
 
   String _buildPrompt(
     String mood,
+    String sleepHours,
+    List<String> goals,
     List<Map<String, dynamic>> recentSummaries,
     String? avoidExact,
     bool strictPrompt,
@@ -234,9 +315,17 @@ class GeminiTipsService {
     final strictText = strictPrompt
         ? 'Return ONLY raw JSON. No prose, no markdown, no code fences, no extra keys.'
         : 'Return ONLY valid JSON.';
+    final sleepLine = sleepHours.isEmpty
+        ? 'Sleep hours: not logged today (give general recovery guidance).'
+        : 'Sleep hours (as logged): $sleepHours.';
+    final goalsLine = goals.isEmpty
+        ? 'Goals today: none listed (keep advice generally useful for students).'
+        : 'Goals today: ${goals.join(', ')}.';
 
     return '''You are generating short, student-friendly recovery tips for a wellness app.
 Mood today: $mood.
+$sleepLine
+$goalsLine
 Recent tips shown (do not repeat these): $recentJson.
 $avoidText
 $strictText Use this schema:
@@ -253,6 +342,7 @@ $strictText Use this schema:
 }
 Rules:
 - Keep each text under 140 characters, be supportive and concise, vary wording from recent tips.
+- Tie the recovery tip and motivation lightly to sleep and goals when provided; stay practical and non-medical.
 - Set "isBreathing" to true ONLY when the relaxation tip is a breathing exercise, otherwise false.
 - When "isBreathing" is true, set "breathingType" to exactly "4-7-8" (for anxiety/stress relief) or "box" (for focus/calm/tiredness). When "isBreathing" is false, omit "breathingType" or set it to null.
 - Choose "4-7-8" for anxious/stressed moods and "box" for tired/sad/calm moods.''';
@@ -364,8 +454,8 @@ Rules:
     return '${text.substring(0, max)}…';
   }
 
-  List<Map<String, dynamic>> _loadHistory(SharedPreferences prefs) {
-    final raw = prefs.getString(_historyKey);
+  List<Map<String, dynamic>> _loadHistory(SharedPreferences prefs, String userId) {
+    final raw = prefs.getString('${_historyKey}_$userId');
     if (raw == null || raw.isEmpty) {
       return [];
     }
@@ -375,6 +465,14 @@ Rules:
     } catch (_) {
       return [];
     }
+  }
+
+  bool _goalsMatch(List<dynamic>? first, List<String> second) {
+    if (first == null) return false;
+    if (first.length != second.length) return false;
+    final firstSet = first.map((g) => g.toString()).toSet();
+    final secondSet = second.toSet();
+    return firstSet.containsAll(secondSet) && secondSet.containsAll(firstSet);
   }
 
   String _todayKey() {
