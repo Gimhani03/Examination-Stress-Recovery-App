@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'profile_screen.dart';
-import 'recovery_tips_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/mood_log_service.dart';
 import 'services/event_service.dart';
 import 'models/event_model.dart';
 import 'mood_flow_theme.dart';
+import 'services/reminder_service.dart';
 
 const double _kCalNeoRadius = 22;
 
@@ -315,6 +314,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final time = timeController.text.trim();
       final description = descriptionController.text.trim();
 
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        titleController.dispose();
+        timeController.dispose();
+        descriptionController.dispose();
+      });
+
       if (title.isNotEmpty) {
         try {
           await _eventService.addEvent(
@@ -330,6 +335,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             _eventsByDate.putIfAbsent(dateKey, () => []);
           });
           _loadEventsForMonth(_currentMonth);
+          await ReminderService.instance.applySchedulesFromPreferences();
 
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -342,6 +348,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
         }
       }
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        titleController.dispose();
+        timeController.dispose();
+        descriptionController.dispose();
+      });
     }
   }
 
@@ -550,6 +562,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         await _eventService.deleteEvent(eventId);
         if (!mounted) return;
         _loadEventsForMonth(_currentMonth);
+        await ReminderService.instance.applySchedulesFromPreferences();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Event deleted successfully')),
         );
@@ -718,28 +732,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFEDE9FE),
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  _goTo(context, const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              _goTo(context, const HomePage());
+            }
+          },
         ),
         title: const Text(
           'Calendar',
@@ -882,44 +886,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded,
-                  color: Color(0xFF115E59), size: 28),
-              onPressed: () => _goTo(context, const ProfileScreen()),
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: const AppMainBottomNav(),
     );
   }
 }
