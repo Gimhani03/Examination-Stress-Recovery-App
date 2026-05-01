@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'profile_screen.dart';
-import 'recovery_tips_screen.dart';
 import 'mood_flow_theme.dart';
 import 'services/focus_timer_service.dart';
+
+/// Matches Home → Tools → Focus Timer card (lavender + violet).
+const Color _focusPurple = Color(0xFF7C3AED);
+const Color _focusPurpleDeep = Color(0xFF5B21B6);
+const Color _focusPurpleSoft = Color(0xFFEDE9FE);
+const Color _focusPurpleMist = Color(0xFFF5F0FF);
+const Color _focusPurpleIconBg = Color(0xFFDDD6FE);
+const Color _focusPurpleGlow = Color(0xFFC4B5FD);
 
 class FocusTimerScreen extends StatefulWidget {
   const FocusTimerScreen({super.key});
@@ -149,28 +155,18 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
       appBar: AppBar(
         backgroundColor: kMoodFlowBg,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  moodFlowGoTo(context, const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              moodFlowGoTo(context, const HomePage());
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -209,7 +205,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [kMoodCardCreamA, kMoodCardCreamB],
+                    colors: [_focusPurpleSoft, _focusPurpleMist],
                   ),
                   borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
                   border: Border.all(color: Colors.black, width: 2),
@@ -221,7 +217,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                       width: 54,
                       height: 54,
                       decoration: BoxDecoration(
-                        color: kMoodMint,
+                        color: _focusPurpleIconBg,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: [
@@ -234,7 +230,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                       ),
                       child: const Icon(
                         Icons.timer_outlined,
-                        color: Colors.black87,
+                        color: _focusPurple,
                         size: 28,
                       ),
                     ),
@@ -316,8 +312,8 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                           painter: _CircleTimerPainter(
                             progress: _sessionProgress,
                             trackColor: const Color(0xFFE2E8F0),
-                            progressColor: const Color(0xFF0D9488),
-                            glowColor: const Color(0xFF5EEAD4),
+                            progressColor: _focusPurple,
+                            glowColor: _focusPurpleGlow,
                           ),
                           child: Center(
                             child: Container(
@@ -327,8 +323,8 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                                 shape: BoxShape.circle,
                                 gradient: const LinearGradient(
                                   colors: [
-                                    Color(0xFF115E59),
-                                    Color(0xFF0D9488),
+                                    _focusPurpleDeep,
+                                    _focusPurple,
                                   ],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
@@ -387,7 +383,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [kMoodCardCreamA, kMoodCardCreamB],
+                    colors: [_focusPurpleSoft, _focusPurpleMist],
                   ),
                   borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
                   border: Border.all(color: Colors.black, width: 2),
@@ -440,7 +436,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                                 Container(
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: done ? kMoodMint : Colors.white,
+                                    color: done ? _focusPurpleIconBg : Colors.white,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(color: Colors.black, width: 2),
                                     boxShadow: done
@@ -457,7 +453,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                                     child: Icon(
                                       done ? Icons.check_rounded : Icons.hourglass_empty_rounded,
                                       color: done
-                                          ? Colors.black87
+                                          ? _focusPurple
                                           : Colors.black.withValues(alpha: 0.22),
                                       size: 22,
                                     ),
@@ -491,7 +487,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                         boxShadow: moodFlowNeoShadows(),
                       ),
                       child: Material(
-                        color: kMoodMint,
+                        color: _focusPurpleIconBg,
                         borderRadius: BorderRadius.circular(14),
                         clipBehavior: Clip.antiAlias,
                         child: InkWell(
@@ -508,7 +504,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                               children: [
                                 Icon(
                                   _isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                  color: Colors.black87,
+                                  color: _focusPurpleDeep,
                                   size: 26,
                                 ),
                                 const SizedBox(width: 8),
@@ -517,7 +513,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w900,
-                                    color: Colors.black87,
+                                    color: _focusPurpleDeep,
                                   ),
                                 ),
                               ],
@@ -574,40 +570,7 @@ class _FocusTimerScreenState extends State<FocusTimerScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => moodFlowGoTo(context, const ProfileScreen()),
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: const AppMainBottomNav(),
     );
   }
 }
@@ -661,8 +624,8 @@ class _CircleTimerPainter extends CustomPainter {
       final progressPaint = Paint()
         ..shader = SweepGradient(
           colors: const [
-            Color(0xFF99F6E4),
-            Color(0xFF0D9488),
+            Color(0xFFE9D5FF),
+            _focusPurple,
           ],
           startAngle: 0,
           endAngle: 2 * math.pi,
