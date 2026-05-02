@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
+import 'package:flutter_application_1/widgets/profile_avatar_chip.dart';
 import 'create_post_screen.dart';
 import 'view_replies_screen.dart';
 import 'homepage.dart';
-import 'profile_screen.dart';
-import 'recovery_tips_screen.dart';
 import 'services/emotion_board_service.dart';
 import 'mood_flow_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,26 +12,36 @@ const double _kBoardNeoRadius = 22;
 
 List<BoxShadow> _boardNeoShadows() => moodFlowNeoShadows();
 
-String _formatEmotionPostTimestamp(dynamic raw) {
-  if (raw == null) return '';
-  DateTime? dt;
-  if (raw is String) {
-    dt = DateTime.tryParse(raw);
-  } else if (raw is DateTime) {
-    dt = raw;
-  }
-  if (dt == null) return '';
-  final l = dt.toLocal();
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  final mon = months[l.month - 1];
-  var hour12 = l.hour % 12;
-  if (hour12 == 0) hour12 = 12;
-  final min = l.minute.toString().padLeft(2, '0');
-  final ampm = l.hour < 12 ? 'AM' : 'PM';
-  return '$mon ${l.day}, ${l.year} · $hour12:$min $ampm';
+/// Avatar columns stored on each post for non-anonymous authors (matches profile presets).
+(String?, String?) _authorAvatarForPostRow(Map<String, dynamic> post) {
+  if (post['is_anonymous'] == true) return (null, null);
+  final rawP = post['author_avatar_preset_id'];
+  final preset =
+      rawP is String && rawP.trim().isNotEmpty ? rawP.trim() : null;
+  final rawU = post['author_avatar_url'];
+  final url = rawU is String && rawU.trim().isNotEmpty ? rawU.trim() : null;
+  return (preset, url);
+}
+
+ThemeData _emotionBoardPopupMenuTheme(BuildContext context) {
+  return Theme.of(context).copyWith(
+    popupMenuTheme: PopupMenuThemeData(
+      color: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+        side: const BorderSide(color: Colors.black, width: 2),
+      ),
+      textStyle: const TextStyle(
+        fontWeight: FontWeight.w800,
+        fontSize: 15,
+        color: Colors.black87,
+      ),
+      menuPadding: const EdgeInsets.symmetric(vertical: 6),
+    ),
+  );
 }
 
 class EmotionBoardScreen extends StatefulWidget {
@@ -63,10 +73,15 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
     _loadPosts();
   }
 
-  Future<void> _loadPosts() async {
-    setState(() {
-      _isLoading = true;
-    });
+  /// When [showLoading] is true (default), the list shows a loading state.
+  /// Set [showLoading] to false to refresh in the background (e.g. after returning
+  /// from [ViewRepliesScreen]) so like/reply counts stay in sync without a jarring full-screen loader.
+  Future<void> _loadPosts({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final results = await Future.wait([
@@ -84,7 +99,7 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
         const SnackBar(content: Text('Unable to load posts. Try again.')),
       );
     } finally {
-      if (mounted) {
+      if (mounted && showLoading) {
         setState(() {
           _isLoading = false;
         });
@@ -103,28 +118,18 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
       appBar: AppBar(
         backgroundColor: kMoodFlowBg,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  _goTo(const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              _goTo(const HomePage());
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -171,21 +176,28 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  PopupMenuButton<String>(
-                    offset: const Offset(0, 44),
-                    onSelected: (String value) {
-                      setState(() {
-                        selectedFilter = value;
-                      });
-                    },
-                    itemBuilder: (BuildContext context) => const [
-                      PopupMenuItem(value: 'All', child: Text('All')),
-                      PopupMenuItem(value: 'Calm', child: Text('Calm')),
-                      PopupMenuItem(value: 'Anxious', child: Text('Anxious')),
-                      PopupMenuItem(value: 'Sad', child: Text('Sad')),
-                      PopupMenuItem(value: 'Tired', child: Text('Tired')),
-                    ],
-                    child: Container(
+                  Theme(
+                    data: _emotionBoardPopupMenuTheme(context),
+                    child: PopupMenuButton<String>(
+                      offset: const Offset(0, 44),
+                      onSelected: (String value) {
+                        setState(() {
+                          selectedFilter = value;
+                        });
+                      },
+                      itemBuilder: (BuildContext context) => [
+                        const PopupMenuItem(
+                            value: 'All', child: Text('All')),
+                        const PopupMenuItem(
+                            value: 'Calm', child: Text('Calm')),
+                        const PopupMenuItem(
+                            value: 'Anxious', child: Text('Anxious')),
+                        const PopupMenuItem(
+                            value: 'Sad', child: Text('Sad')),
+                        const PopupMenuItem(
+                            value: 'Tired', child: Text('Tired')),
+                      ],
+                      child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
@@ -208,6 +220,7 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                         ],
                       ),
                     ),
+                  ),
                   ),
                   const SizedBox(width: 10),
                   GestureDetector(
@@ -321,10 +334,14 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                                     ? 'Anonymous User'
                                     : (post['display_name'] as String? ??
                                         'User');
+                                final av = _authorAvatarForPostRow(post);
                                 return _buildPostCard(
+                                  context: context,
                                   name: name,
+                                  avatarPresetId: av.$1,
+                                  avatarUrl: av.$2,
                                   timestamp:
-                                      _formatEmotionPostTimestamp(post['created_at']),
+                                      formatEmotionPostTimestamp(post['created_at']),
                                   useMintAccent: !isEven,
                                   text: post['text'] ?? '',
                                   moodImage: post['mood_image'] ??
@@ -337,7 +354,7 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                                   onLike: () =>
                                       _handleLike(post, originalIndex),
                                   onComment: () async {
-                                    await Navigator.push(
+                                    await Navigator.push<bool>(
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) =>
@@ -345,6 +362,16 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                                           postId: post['id'] as String,
                                           postName: name,
                                           postText: post['text'] ?? '',
+                                          postAvatarPresetId: av.$1,
+                                          postAvatarUrl: av.$2,
+                                          initialLikeCount:
+                                              (post['like_count'] as int?) ?? 0,
+                                          initialReplyCount:
+                                              (post['reply_count'] as int?) ?? 0,
+                                          initialIsLiked: _likedPostIds
+                                              .contains(post['id'] as String? ?? ''),
+                                          moodImageAsset: post['mood_image'] as String?,
+                                          useMintForCard: !isEven,
                                           onReplyAdded: (replyCount) {
                                             setState(() {
                                               _posts[originalIndex]
@@ -355,6 +382,8 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                                         ),
                                       ),
                                     );
+                                    if (!mounted) return;
+                                    await _loadPosts(showLoading: false);
                                   },
                                   onEdit: () =>
                                       _showEditPostDialog(originalIndex),
@@ -371,40 +400,7 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => _goTo(const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () {},
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => _goTo(const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded, color: kMoodFlowTealNav, size: 28),
-              onPressed: () => _goTo(const ProfileScreen()),
-            ),
-          ],
-        ),
-      ),
+      bottomNavigationBar: const AppMainBottomNav(),
     );
   }
 
@@ -412,81 +408,251 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
     final controller = TextEditingController(text: _posts[postIndex]['text']);
     await showDialog<void>(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('Edit post'),
-          content: TextField(
-            controller: controller,
-            maxLines: 5,
-            textCapitalization: TextCapitalization.sentences,
-            keyboardType: TextInputType.multiline,
-            decoration: InputDecoration(
-              hintText: 'Update your post',
-              border: OutlineInputBorder(),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 340),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+              border: Border.all(color: Colors.black, width: 2),
+              boxShadow: moodFlowNeoShadows(),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Edit post',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [kMoodCardCreamA, kMoodCardCreamB],
+                    ),
+                    borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: moodFlowNeoShadows(),
+                  ),
+                  child: TextField(
+                    controller: controller,
+                    maxLines: 5,
+                    textCapitalization: TextCapitalization.sentences,
+                    keyboardType: TextInputType.multiline,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      height: 1.4,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Update your post',
+                      hintStyle: TextStyle(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      border: InputBorder.none,
+                      filled: true,
+                      fillColor: Colors.transparent,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kMoodFlowTealNav,
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Material(
+                      color: kMoodMint,
+                      borderRadius: BorderRadius.circular(14),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () async {
+                          final updatedText = controller.text.trim();
+                          if (updatedText.isEmpty) {
+                            Navigator.pop(dialogContext);
+                            return;
+                          }
+                          try {
+                            await _service.updatePostText(
+                              postId: _posts[postIndex]['id'] as String,
+                              text: updatedText,
+                            );
+                            if (!mounted) return;
+                            setState(() {
+                              _posts[postIndex]['text'] = updatedText;
+                            });
+                          } on AuthException catch (error) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error.message)),
+                            );
+                          } catch (_) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Unable to update post.')),
+                            );
+                          }
+                          if (context.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.black, width: 2),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Save',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final updatedText = controller.text.trim();
-                if (updatedText.isEmpty) {
-                  Navigator.pop(dialogContext);
-                  return;
-                }
-                try {
-                  await _service.updatePostText(
-                    postId: _posts[postIndex]['id'] as String,
-                    text: updatedText,
-                  );
-                  if (!mounted) return;
-                  setState(() {
-                    _posts[postIndex]['text'] = updatedText;
-                  });
-                } on AuthException catch (error) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(error.message)),
-                  );
-                } catch (_) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Unable to update post.')),
-                  );
-                }
-                if (context.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-              },
-              child: Text('Save'),
-            ),
-          ],
         );
       },
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
   }
 
   Future<void> _confirmDeletePost(int postIndex) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('Delete post?'),
-          content: Text('This action cannot be undone.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text('Cancel'),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 340),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(kMoodFlowNeoRadius),
+              border: Border.all(color: Colors.black, width: 2),
+              boxShadow: moodFlowNeoShadows(),
             ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: Text('Delete'),
+            padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Delete post?',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'This action cannot be undone.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black.withValues(alpha: 0.62),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kMoodFlowTealNav,
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Material(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(14),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => Navigator.pop(dialogContext, true),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.black, width: 2),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Delete',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -534,6 +700,17 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
       } else {
         await _service.likePost(postId: postId);
       }
+      if (!mounted) return;
+      // Replace optimistic count with true aggregate (same as feed query).
+      final fresh = await _service.fetchPostById(postId);
+      if (!mounted) return;
+      if (fresh != null) {
+        final n = (fresh['like_count'] as int?) ?? 0;
+        setState(() {
+          _posts[postIndex]['like_count'] = n;
+        });
+        await _service.updateLikeCount(postId: postId, likeCount: n);
+      }
     } on AuthException catch (error) {
       // Revert optimistic update
       if (!mounted) return;
@@ -567,7 +744,10 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
   }
 
   Widget _buildPostCard({
+    required BuildContext context,
     required String name,
+    String? avatarPresetId,
+    String? avatarUrl,
     required String timestamp,
     required bool useMintAccent,
     required String text,
@@ -581,19 +761,17 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
     required VoidCallback onDelete,
     bool isOwner = false,
   }) {
-    final bg = useMintAccent
-        ? const Color(0xFFF0FDFA)
-        : const Color(0xFFF5F0FF);
-    final avatarBg = useMintAccent
-        ? const Color(0xFFCCFBF1)
-        : const Color(0xFFEDE4FF);
     final accent = useMintAccent
         ? const Color(0xFF0F766E)
         : const Color(0xFF5B21B6);
 
     return Container(
       decoration: BoxDecoration(
-        color: bg,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [kMoodCardCreamA, kMoodCardCreamB],
+        ),
         borderRadius: BorderRadius.circular(_kBoardNeoRadius),
         border: Border.all(color: Colors.black, width: 2),
         boxShadow: _boardNeoShadows(),
@@ -605,16 +783,13 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: avatarBg,
-                child: Icon(
-                  Icons.person_rounded,
-                  color: accent,
-                  size: 26,
-                ),
+              ProfileAvatarChip(
+                initials: name.isNotEmpty ? name[0].toUpperCase() : '?',
+                presetId: avatarPresetId,
+                networkUrl: avatarUrl,
+                size: 36,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,26 +820,29 @@ class _EmotionBoardScreenState extends State<EmotionBoardScreen> {
                 ),
               ),
               if (isOwner)
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      onEdit();
-                    } else if (value == 'delete') {
-                      onDelete();
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: Text('Edit'),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Delete'),
-                    ),
-                  ],
-                  icon: Icon(Icons.more_vert_rounded,
-                      color: Colors.black.withValues(alpha: 0.45)),
+                Theme(
+                  data: _emotionBoardPopupMenuTheme(context),
+                  child: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        onEdit();
+                      } else if (value == 'delete') {
+                        onDelete();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text('Edit'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete'),
+                      ),
+                    ],
+                    icon: Icon(Icons.more_vert_rounded,
+                        color: Colors.black.withValues(alpha: 0.45)),
+                  ),
                 ),
             ],
           ),

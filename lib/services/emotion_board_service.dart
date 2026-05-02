@@ -1,23 +1,44 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../profile_avatar_presets.dart';
+
 class EmotionBoardService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  static int _countFromEmbed(Map<String, dynamic> post, String key) {
+    final data = post[key] as List?;
+    if (data == null || data.isEmpty) {
+      return 0;
+    }
+    final c = data[0]['count'];
+    if (c is int) {
+      return c;
+    }
+    if (c is num) {
+      return c.toInt();
+    }
+    return 0;
+  }
+
+  /// Applies true counts from related rows, not the denormalized [like_count] / [reply_count] columns.
+  static void _applyEmbedCounts(Map<String, dynamic> post) {
+    post['like_count'] = _countFromEmbed(post, 'emotion_likes');
+    post['reply_count'] = _countFromEmbed(post, 'emotion_replies');
+    post.remove('emotion_likes');
+    post.remove('emotion_replies');
+  }
+
   Future<List<Map<String, dynamic>>> fetchPosts({String? moodFilter}) async {
-    // Use embedded count so like_count always reflects actual rows in emotion_likes,
-    // regardless of who is logged in or RLS on emotion_posts.
+    // Embedded counts = source of truth (actual rows in emotion_likes / emotion_replies).
     final response = await _supabase
         .from('emotion_posts')
-        .select('*, emotion_likes(count)')
+        .select('*, emotion_likes(count), emotion_replies(count)')
         .order('created_at', ascending: false);
 
-    final posts = response.map((item) {
-      final post = Map<String, dynamic>.from(item);
-      final likesData = post['emotion_likes'] as List?;
-      post['like_count'] = (likesData != null && likesData.isNotEmpty)
-          ? (likesData[0]['count'] as int? ?? 0)
-          : 0;
-      post.remove('emotion_likes');
+    final posts = (response as List<dynamic>)
+        .map((item) {
+      final post = Map<String, dynamic>.from(item as Map);
+      _applyEmbedCounts(post);
       return post;
     }).toList();
 
@@ -41,6 +62,28 @@ class EmotionBoardService {
         .toSet();
   }
 
+  /// One post by id (for deep links / reply screen). Counts match the feed (embedded aggregates).
+  Future<Map<String, dynamic>?> fetchPostById(String postId) async {
+    if (postId.isEmpty) {
+      return null;
+    }
+    try {
+      final r = await _supabase
+          .from('emotion_posts')
+          .select('*, emotion_likes(count), emotion_replies(count)')
+          .eq('id', postId)
+          .maybeSingle();
+      if (r == null) {
+        return null;
+      }
+      final post = Map<String, dynamic>.from(r);
+      _applyEmbedCounts(post);
+      return post;
+    } on PostgrestException {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> createPost({
     required String text,
     required String moodType,
@@ -53,6 +96,7 @@ class EmotionBoardService {
     }
 
     final displayName = _resolveDisplayName(user, isAnonymous);
+    final avatarCols = _authorAvatarColumnsForInsert(user: user, anonymous: isAnonymous);
     final response = await _supabase.from('emotion_posts').insert({
       'user_id': user.id,
       'display_name': displayName,
@@ -62,6 +106,7 @@ class EmotionBoardService {
       'mood_image': moodImage,
       'like_count': 0,
       'reply_count': 0,
+      ...avatarCols,
     }).select().single();
 
     return Map<String, dynamic>.from(response);
@@ -142,11 +187,13 @@ class EmotionBoardService {
     }
 
     final displayName = _resolveDisplayName(user, false);
+    final avatarCols = _authorAvatarColumnsForInsert(user: user, anonymous: false);
     final response = await _supabase.from('emotion_replies').insert({
       'post_id': postId,
       'user_id': user.id,
       'display_name': displayName,
       'text': text,
+      ...avatarCols,
     }).select().single();
 
     return Map<String, dynamic>.from(response);
@@ -157,6 +204,71 @@ class EmotionBoardService {
     required int replyCount,
   }) async {
     await _supabase.from('emotion_posts').update({'reply_count': replyCount}).eq('id', postId);
+  }
+
+  /// Overwrites avatar snapshot rows for this [user]'s authored content so the emotion board
+  /// stays in sync with profile after preset / photo changes.
+  ///
+  /// Pass [authorAvatarSnapshot] after updating auth metadata so we do not rely on a possibly
+  /// stale `user.userMetadata` in the [User] object returned from the SDK.
+  ///
+  /// Uses the same column shape as `_authorAvatarColumnsForInsert`.
+  /// **Anonymous** posts (`is_anonymous = true`) are skipped so we never reveal an avatar link.
+  /// Rows with `is_anonymous` NULL (legacy data) are included — treat NULL as non-anonymous
+  /// in the filter below; see migration that backfills `false` where appropriate.
+  Future<void> syncAuthorAvatarsForUser(
+    User user, {
+    Map<String, dynamic>? authorAvatarSnapshot,
+  }) async {
+    final patch = authorAvatarSnapshot ??
+        _authorAvatarColumnsForInsert(user: user, anonymous: false);
+
+    await _supabase.from('emotion_posts').update(patch).eq('user_id', user.id).or(
+          'is_anonymous.eq.false,is_anonymous.is.null',
+        );
+
+    await _supabase.from('emotion_replies').update(patch).eq('user_id', user.id);
+  }
+
+  /// Rewrites **non-anonymous** posts' and **all** of this author's replies' `display_name`
+  /// to match profile after editing `full_name` in Edit profile.
+  ///
+  /// Anonymous posts (`is_anonymous = true`) are skipped so labels stay `"Anonymous User"`.
+  Future<void> syncAuthorDisplayName({
+    required User user,
+    required String displayName,
+  }) async {
+    final trimmed = displayName.trim();
+    if (trimmed.isEmpty) return;
+
+    await _supabase
+        .from('emotion_posts')
+        .update({'display_name': trimmed})
+        .eq('user_id', user.id)
+        .or('is_anonymous.eq.false,is_anonymous.is.null');
+
+    await _supabase.from('emotion_replies').update({'display_name': trimmed}).eq('user_id', user.id);
+  }
+
+  static Map<String, dynamic> _authorAvatarColumnsForInsert({
+    required User user,
+    required bool anonymous,
+  }) {
+    if (anonymous) {
+      return {
+        'author_avatar_preset_id': null,
+        'author_avatar_url': null,
+      };
+    }
+    final rawPreset = user.userMetadata?[kAvatarPresetIdKey];
+    final preset =
+        rawPreset is String && rawPreset.trim().isNotEmpty ? rawPreset.trim() : null;
+    final rawUrl = user.userMetadata?['avatar_url'];
+    final url = rawUrl is String && rawUrl.trim().isNotEmpty ? rawUrl.trim() : null;
+    return {
+      'author_avatar_preset_id': preset,
+      'author_avatar_url': url,
+    };
   }
 
   String _resolveDisplayName(User user, bool isAnonymous) {
