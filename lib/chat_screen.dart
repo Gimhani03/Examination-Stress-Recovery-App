@@ -3,13 +3,10 @@ import 'package:flutter_application_1/models/chat_message.dart';
 import 'package:flutter_application_1/models/chat_thread_summary.dart';
 import 'package:flutter_application_1/services/gemini_chat_service.dart';
 import 'package:flutter_application_1/homepage.dart';
-import 'package:flutter_application_1/emotion_board_screen.dart';
-import 'package:flutter_application_1/recovery_tips_screen.dart';
-import 'package:flutter_application_1/profile_screen.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 
 const _pageBackground = Color(0xFFEDE9FE);
 const _kNeoRadius = 18.0;
-const _tealNav = Color(0xFF115E59);
 const _tealAccent = Color(0xFF0D9488);
 const _userBubbleTop = Color(0xFFCCFBF1);
 const _userBubbleBottom = Color(0xFF99F6E4);
@@ -281,6 +278,17 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _activateConversation(String id) async {
+    if (!mounted) return;
+    setState(() {
+      _conversationId = id;
+      _isLoading = true;
+    });
+    await _chatService.setActiveConversationId(id);
+    if (!mounted) return;
+    await _loadChatHistory();
+  }
+
   Future<void> _openChatList() async {
     if (_conversationId == null) return;
     List<ChatThreadSummary> threads = [];
@@ -296,7 +304,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!mounted) return;
 
-    await showModalBottomSheet<void>(
+    final selectedId = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: _assistantBubbleTop,
@@ -357,27 +365,30 @@ class _ChatScreenState extends State<ChatScreen> {
                             final active = t.id == _conversationId;
                             final time =
                                 '${t.updatedAt.year}-${t.updatedAt.month.toString().padLeft(2, '0')}-${t.updatedAt.day.toString().padLeft(2, '0')}';
-                            return Material(
-                              color: active ? _userBubbleBottom : Colors.white,
+                            return InkWell(
+                              onTap: () => Navigator.pop(sheetContext, t.id),
                               borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                onTap: () async {
-                                  Navigator.pop(sheetContext);
-                                  await _chatService.setActiveConversationId(t.id);
-                                  if (!mounted) return;
-                                  setState(() {
-                                    _conversationId = t.id;
-                                  });
-                                  await _loadChatHistory();
-                                },
-                                borderRadius: BorderRadius.circular(16),
-                                child: Container(
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  gradient: active
+                                      ? const LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            _userBubbleTop,
+                                            _userBubbleBottom,
+                                          ],
+                                        )
+                                      : null,
+                                  color: active ? null : Colors.white,
+                                  border: Border.all(color: Colors.black, width: 2),
+                                  boxShadow: active ? _chatNeoShadows() : null,
+                                ),
+                                child: Padding(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 14),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.black, width: 2),
-                                    boxShadow: active ? _chatNeoShadows() : null,
+                                    horizontal: 16,
+                                    vertical: 14,
                                   ),
                                   child: Row(
                                     children: [
@@ -411,8 +422,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                       if (active)
                                         const Padding(
                                           padding: EdgeInsets.only(left: 8),
-                                          child: Icon(Icons.check_circle_rounded,
-                                              color: _tealAccent, size: 22),
+                                          child: Icon(
+                                            Icons.check_circle_rounded,
+                                            color: Colors.black87,
+                                            size: 22,
+                                          ),
                                         ),
                                     ],
                                   ),
@@ -428,6 +442,9 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
+
+    if (!mounted || selectedId == null) return;
+    await _activateConversation(selectedId);
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -514,37 +531,118 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$minute';
   }
 
-  Widget _neoAppBarIconButton({
-    required IconData icon,
-    required VoidCallback? onTap,
-  }) {
+  Widget _chatOverflowMenuButton() {
     return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: Center(
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Ink(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.black, width: 2),
-                boxShadow: _chatNeoShadows(),
-              ),
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(
-                  icon,
-                  color: onTap == null
-                      ? Colors.black.withValues(alpha: 0.22)
-                      : Colors.black87,
+      padding: const EdgeInsets.only(right: 8),
+      child: PopupMenuButton<String>(
+        tooltip: 'More options',
+        offset: const Offset(0, 46),
+        position: PopupMenuPosition.under,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: Colors.black, width: 2),
+        ),
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
+        onSelected: (value) {
+          switch (value) {
+            case 'new':
+              if (!_isSending) _startNewChat();
+              break;
+            case 'folder':
+              if (_conversationId != null) _openChatList();
+              break;
+            case 'delete':
+              if (_messages.isNotEmpty) _clearHistory();
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem<String>(
+            value: 'new',
+            enabled: !_isSending,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.add_comment_rounded,
                   size: 22,
+                  color: _isSending ? Colors.black26 : Colors.black87,
                 ),
-              ),
+                const SizedBox(width: 12),
+                const Text(
+                  'New chat',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
             ),
+          ),
+          PopupMenuItem<String>(
+            value: 'folder',
+            enabled: _conversationId != null,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.folder_open_rounded,
+                  size: 22,
+                  color: _conversationId == null ? Colors.black26 : Colors.black87,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Saved chats',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(height: 1),
+          PopupMenuItem<String>(
+            value: 'delete',
+            enabled: _messages.isNotEmpty,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.delete_outline_rounded,
+                  size: 22,
+                  color: _messages.isEmpty ? Colors.black26 : const Color(0xFFDC2626),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Delete chat',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: _messages.isEmpty
+                        ? Colors.black26
+                        : const Color(0xFFDC2626),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.black, width: 2),
+            boxShadow: _chatNeoShadows(),
+          ),
+          child: const Icon(
+            Icons.more_vert_rounded,
+            color: Colors.black87,
+            size: 24,
           ),
         ),
       ),
@@ -552,6 +650,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _goTo(Widget screen) {
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => screen),
@@ -566,28 +665,18 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         backgroundColor: _pageBackground,
         elevation: 0,
-        leadingWidth: 56,
-        leading: Center(
-          child: PhysicalModel(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 4,
-            shadowColor: Colors.black38,
-            child: GestureDetector(
-              onTap: () {
-                if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                } else {
-                  _goTo(const HomePage());
-                }
-              },
-              child: const SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 18),
-              ),
-            ),
-          ),
+        leading: IconButton(
+          iconSize: 26,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              _goTo(const HomePage());
+            }
+          },
         ),
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -615,21 +704,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         centerTitle: true,
         actions: [
-          _neoAppBarIconButton(
-            icon: Icons.add_comment_rounded,
-            onTap: _isSending ? null : _startNewChat,
-          ),
-          _neoAppBarIconButton(
-            icon: Icons.folder_open_rounded,
-            onTap: _conversationId == null ? null : _openChatList,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: _neoAppBarIconButton(
-              icon: Icons.delete_outline_rounded,
-              onTap: _messages.isNotEmpty ? _clearHistory : null,
-            ),
-          ),
+          _chatOverflowMenuButton(),
         ],
       ),
       body: Column(
@@ -660,7 +735,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                               const SizedBox(height: 22),
                               const Text(
-                                'Hi — I’m your AI study companion',
+                                'Hi, I’m your AI study companion',
                                 style: TextStyle(
                                   fontSize: 21,
                                   color: Colors.black87,
@@ -672,7 +747,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                               const SizedBox(height: 10),
                               Text(
-                                'Exam stress, focus, or a rough day — type what’s on your mind.',
+                                'Exam stress, focus, or a rough day, type what’s on your mind.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 15,
@@ -850,39 +925,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined, color: _tealNav, size: 28),
-              onPressed: () => _goTo(const HomePage()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline_rounded, color: _tealNav, size: 28),
-              onPressed: () => _goTo(const EmotionBoardScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.lightbulb_outline_rounded, color: _tealNav, size: 28),
-              onPressed: () => _goTo(const RecoveryTipsScreen()),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded, color: _tealNav, size: 28),
-              onPressed: () => _goTo(const ProfileScreen()),
-            ),
-          ],
-        ),
+      bottomNavigationBar: const AppMainBottomNav(
+        current: AppMainNavTab.chat,
       ),
     );
   }
