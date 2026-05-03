@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/widgets/app_main_bottom_nav.dart';
 import 'homepage.dart';
-import 'emotion_board_screen.dart';
-import 'profile_screen.dart';
 import 'breathing_exercise_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'services/gemini_tips_service.dart';
 import 'services/mood_log_service.dart';
+import 'services/saved_motivation_service.dart';
 
 const double _kRtNeoRadius = 22;
 
@@ -34,6 +36,8 @@ class _RecoveryTipsScreenState extends State<RecoveryTipsScreen>
   final MoodLogService _moodService = MoodLogService();
   late Future<RecoveryTips> _tipsFuture;
   late String _mood;
+  String _sleepHoursForTips = '';
+  List<String> _goalsForTips = [];
   String _moodImage = 'assets/CalmIcon.png';
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -101,11 +105,25 @@ class _RecoveryTipsScreenState extends State<RecoveryTipsScreen>
 
     _mood = newMood;
     _moodImage = newImage;
+    if (todayLog != null) {
+      _sleepHoursForTips = (todayLog['sleep_hours'] as String? ?? '').trim();
+      final rawGoals = todayLog['goals'];
+      _goalsForTips = rawGoals is List
+          ? rawGoals.map((g) => g.toString()).toList()
+          : <String>[];
+    } else {
+      _sleepHoursForTips = '';
+      _goalsForTips = [];
+    }
     if (mounted) {
       setState(() {});
     }
 
-    return _tipsService.getTips(mood: _mood);
+    return _tipsService.getTips(
+      mood: _mood,
+      sleepHours: _sleepHoursForTips,
+      goals: _goalsForTips,
+    );
   }
 
   String _normalizeMood(String? mood) {
@@ -144,184 +162,127 @@ class _RecoveryTipsScreenState extends State<RecoveryTipsScreen>
 
   // ─── Build ────────────────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFEDE9FE),
-      body: Column(
+  static const Color _pageBackground = Color(0xFFEDE9FE);
+
+  void _onBack() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      _goTo(context, const HomePage());
+    }
+  }
+
+  Widget _buildMoodAvatar() {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.black, width: 2),
+        boxShadow: _rtNeoShadows(),
+      ),
+      alignment: Alignment.center,
+      child: Image.asset(
+        _moodImage,
+        width: 24,
+        height: 24,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: _pageBackground,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      leading: IconButton(
+        iconSize: 26,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+        onPressed: _onBack,
+      ),
+      title: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _buildHeader(),
-          Expanded(
-            child: FutureBuilder<RecoveryTips>(
-              future: _tipsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return _buildLoading();
-                }
-                if (snapshot.hasError) {
-                  return _buildError(snapshot.error);
-                }
-                final tips = snapshot.data!;
-                return FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
-                    child: Column(
-                      children: [
-                        _buildRelaxationCard(tips),
-                        const SizedBox(height: 16),
-                        _buildRecoveryTipCard(tips),
-                        const SizedBox(height: 16),
-                        _buildMotivationCard(tips),
-                      ],
-                    ),
-                  ),
-                );
-              },
+          const Text(
+            'Recovery tips',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.black87,
+              letterSpacing: -0.5,
+              height: 1.1,
+            ),
+          ),
+          Text(
+            'Personalised for your ${_moodLabel(_mood)} mood',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.black.withValues(alpha: 0.38),
+              letterSpacing: 0.12,
             ),
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      centerTitle: true,
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: Center(child: _buildMoodAvatar()),
+        ),
+      ],
     );
   }
 
-  // ─── Header ───────────────────────────────────────────────────────────────
-
-  Widget _buildHeader() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFF5F0FF),
-            Color(0xFFEEF2FF),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _pageBackground,
+      appBar: _buildAppBar(),
+      body: SafeArea(
+        top: false,
+        child: FutureBuilder<RecoveryTips>(
+          future: _tipsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return _buildLoading();
+            }
+            if (snapshot.hasError) {
+              return _buildError(snapshot.error);
+            }
+            final tips = snapshot.data!;
+            return FadeTransition(
+              opacity: _fadeAnimation,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+                child: Column(
+                  children: [
+                    _buildRelaxationCard(tips),
+                    const SizedBox(height: 16),
+                    _buildRecoveryTipCard(tips),
+                    const SizedBox(height: 16),
+                    _buildMotivationCard(tips),
+                    const SizedBox(height: 12),
+                    _MotivationSaveBar(
+                      tips: tips,
+                      moodLabel: _moodLabel(_mood),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      if (Navigator.canPop(context)) {
-                        Navigator.pop(context);
-                      } else {
-                        _goTo(context, const HomePage());
-                      }
-                    },
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.black, width: 2),
-                        boxShadow: _rtNeoShadows(),
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.black87,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Icon(Icons.menu_book_rounded,
-                          color: Color(0xFF7C3AED).withValues(alpha: 0.85),
-                          size: 22),
-                      const SizedBox(width: 10),
-                      Icon(Icons.psychology_rounded,
-                          color: Color(0xFF0D9488).withValues(alpha: 0.85),
-                          size: 22),
-                      const SizedBox(width: 10),
-                      Icon(Icons.auto_awesome_rounded,
-                          color: Color(0xFFEA580C).withValues(alpha: 0.75),
-                          size: 22),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Recovery tips',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                            height: 1.1,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Personalised for your ${_moodLabel(_mood)} mood',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black.withValues(alpha: 0.48),
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.black, width: 2),
-                      boxShadow: _rtNeoShadows(),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset(
-                          _moodImage,
-                          width: 28,
-                          height: 28,
-                          fit: BoxFit.contain,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _moodLabel(_mood),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      bottomNavigationBar: AppMainBottomNav(
+        current: AppMainNavTab.tips,
+        tipsMood: _mood,
+        tipsMoodImage: _moodImage,
       ),
     );
   }
@@ -433,7 +394,11 @@ class _RecoveryTipsScreenState extends State<RecoveryTipsScreen>
             GestureDetector(
               onTap: () {
                 setState(() {
-                  _tipsFuture = _tipsService.getTips(mood: _mood);
+                  _tipsFuture = _tipsService.getTips(
+                    mood: _mood,
+                    sleepHours: _sleepHoursForTips,
+                    goals: _goalsForTips,
+                  );
                 });
               },
               child: Container(
@@ -653,56 +618,201 @@ class _RecoveryTipsScreenState extends State<RecoveryTipsScreen>
       ),
     );
   }
+}
 
-  // ─── Bottom Nav ───────────────────────────────────────────────────────────
+class _MotivationSaveBar extends StatefulWidget {
+  const _MotivationSaveBar({
+    required this.tips,
+    required this.moodLabel,
+  });
 
-  Widget _buildBottomNav() {
-    return Container(
-      height: 64,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _navItem(
-            Icons.home_outlined,
-            false,
-            () => _goTo(context, const HomePage()),
-          ),
-          _navItem(
-            Icons.chat_bubble_outline_rounded,
-            false,
-            () => _goTo(context, const EmotionBoardScreen()),
-          ),
-          _navItem(Icons.lightbulb_rounded, true, () {}),
-          _navItem(
-            Icons.person_outline_rounded,
-            false,
-            () => _goTo(context, const ProfileScreen()),
-          ),
-        ],
-      ),
-    );
+  final RecoveryTips tips;
+  final String moodLabel;
+
+  @override
+  State<_MotivationSaveBar> createState() => _MotivationSaveBarState();
+}
+
+class _MotivationSaveBarState extends State<_MotivationSaveBar> {
+  final SavedMotivationService _service = SavedMotivationService();
+  bool _checking = true;
+  bool _saved = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshSaved();
   }
 
-  Widget _navItem(IconData icon, bool isActive, VoidCallback onTap) {
-    return IconButton(
-      icon: Icon(
-        icon,
-        color: isActive
-            ? const Color(0xFF7C3AED)
-            : const Color(0xFF115E59),
-        size: 28,
+  @override
+  void didUpdateWidget(covariant _MotivationSaveBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tips.motivation != widget.tips.motivation) {
+      _refreshSaved();
+    }
+  }
+
+  Future<void> _refreshSaved() async {
+    if (!mounted) return;
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      setState(() {
+        _checking = false;
+        _saved = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _checking = true;
+    });
+
+    try {
+      final date = SavedMotivationService.localDateString();
+      final exists = await _service.hasSavedExact(
+        sourceDate: date,
+        motivationText: widget.tips.motivation,
+      );
+      if (!mounted) return;
+      setState(() {
+        _saved = exists;
+        _checking = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saved = false;
+        _checking = false;
+      });
+    }
+  }
+
+  Future<void> _onSave() async {
+    if (Supabase.instance.client.auth.currentUser == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in from Profile to save motivations.'),
+        ),
+      );
+      return;
+    }
+
+    if (_saved || _saving) return;
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      await _service.saveMotivation(
+        motivationText: widget.tips.motivation,
+        mood: widget.moodLabel,
+      );
+      if (!mounted) return;
+      setState(() {
+        _saved = true;
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved to Profile → Saved motivations')),
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checking) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final signedIn = Supabase.instance.client.auth.currentUser != null;
+
+    return GestureDetector(
+      onTap: () {
+        if (!signedIn) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sign in from Profile to save motivations.'),
+            ),
+          );
+          return;
+        }
+        if (!_saved && !_saving) {
+          _onSave();
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: _saved ? const Color(0xFFE0E7FF) : const Color(0xFFFFFFFF),
+          borderRadius: BorderRadius.circular(_kRtNeoRadius),
+          border: Border.all(color: Colors.black, width: 2),
+          boxShadow: _rtNeoShadows(),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _saved ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+              color: Colors.black87,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                !signedIn
+                    ? 'Sign in to save this motivation'
+                    : _saved
+                        ? 'Saved — view anytime in Profile'
+                        : 'Save this motivation',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black.withValues(
+                    alpha: !signedIn || _saved ? 0.48 : 0.87,
+                  ),
+                ),
+              ),
+            ),
+            if (signedIn && !_saved)
+              Text(
+                'Save',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: _saving ? Colors.black26 : const Color(0xFF1D4ED8),
+                ),
+              ),
+          ],
+        ),
       ),
-      onPressed: onTap,
     );
   }
 }
