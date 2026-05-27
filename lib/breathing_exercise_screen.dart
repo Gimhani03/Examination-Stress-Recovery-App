@@ -16,8 +16,7 @@ class _Technique {
   final String name;
   final String subtitle;
   /// Shown when [iconAsset] is null.
-  final String emoji;
-  /// If set, shown instead of [emoji] in the technique selector.
+  /// If set, shown instead of a fallback icon in the technique selector.
   final String? iconAsset;
   final List<_Phase> phases;
   /// Flat accent for neo UI (breathing disk + highlights).
@@ -30,7 +29,6 @@ class _Technique {
   const _Technique({
     required this.name,
     required this.subtitle,
-    this.emoji = '',
     this.iconAsset,
     required this.phases,
     required this.accent,
@@ -494,8 +492,8 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
                                             color: Colors.black87,
                                           ),
                                         )
-                                      : Center(
-                                          child: Text(t.emoji, style: const TextStyle(fontSize: 30)),
+                                      : const Center(
+                                          child: Icon(Icons.air_rounded, size: 30, color: Colors.black87),
                                         ),
                                 ),
                                 const SizedBox(height: 10),
