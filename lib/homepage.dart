@@ -1371,7 +1371,7 @@ class _HomeExamCard extends StatelessWidget {
                       width: 6,
                       height: 6,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(1.0 - i * 0.3),
+                        color: Colors.white.withValues(alpha: 1.0 - i * 0.3),
                         shape: BoxShape.circle,
                       ),
                     ),

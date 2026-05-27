@@ -356,6 +356,7 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
               subtitle: _subtitleFor(row),
               time: _timeLabel(row['created_at'] as String?),
               onTap: () async {
+                final nav = Navigator.of(context);
                 final id = row['id']?.toString() ?? '';
                 if (id.isNotEmpty) {
                   await _service.markAsRead(id);
@@ -366,9 +367,8 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
                   }
                 }
                 final postId = row['post_id']?.toString();
-                if (postId != null && postId.isNotEmpty && context.mounted) {
-                  await Navigator.push<void>(
-                    context,
+                if (postId != null && postId.isNotEmpty) {
+                  await nav.push<void>(
                     MaterialPageRoute<void>(
                       builder: (_) => EmotionPostOpenScreen(postId: postId),
                     ),
