@@ -276,6 +276,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                               return;
                             }
 
+                            final messenger = ScaffoldMessenger.of(context);
+                            final nav = Navigator.of(context);
+
                             setState(() {
                               _isSaving = true;
                             });
@@ -289,15 +292,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                               );
 
                               if (!mounted) return;
-                              Navigator.pop(context, created);
+                              nav.pop(created);
                             } on AuthException catch (error) {
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(content: Text(error.message)),
                               );
                             } catch (_) {
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 const SnackBar(content: Text('Unable to create post.')),
                               );
                             } finally {
