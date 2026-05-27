@@ -56,7 +56,7 @@ class SocialNotificationService {
       },
     );
     try {
-      await ch.subscribe();
+      ch.subscribe();
       _channel = ch;
     } catch (e) {
       debugPrint('social Realtime subscribe: $e');
