@@ -6,7 +6,6 @@
 
 **A Flutter wellbeing companion for students navigating examination pressure**
 
-[![CI](https://github.com/gimhani/examination-stress-recovery-app/actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 ![Flutter](https://img.shields.io/badge/Flutter-stable-02569B?logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-%5E3.8.1-0175C2?logo=dart&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?logo=supabase&logoColor=white)
